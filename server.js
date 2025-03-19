@@ -5,25 +5,33 @@ const cors = require("cors");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 
+
 const app = express();
 app.use(express.json());
 app.use(cors());
 
 // MySQL Database Connection
-const db = mysql.createConnection({
-  host: process.env.DB_HOST,
+
+
+const connection = mysql.createConnection({
+  host: process.env.DB_HOST, 
   user: process.env.DB_USER,
   password: process.env.DB_PASSWORD,
   database: process.env.DB_NAME,
+  port: process.env.DB_PORT || 3306,
+  connectTimeout: 10000,  // Increase timeout to 10 seconds
 });
 
-db.connect((err) => {
+connection.connect((err) => {
   if (err) {
-    console.error("Database connection failed:", err);
+    console.error("❌ Database connection failed:", err);
   } else {
-    console.log("✅ Connected to MySQL Database");
+    console.log("✅ Connected to MySQL Database!");
   }
 });
+
+module.exports = connection;
+
 
 // Generate JWT Token
 const generateToken = (user) => {
