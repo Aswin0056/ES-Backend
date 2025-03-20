@@ -26,7 +26,7 @@ pool.connect((err) => {
 // Generate JWT Token
 const generateToken = (user) => {
   return jwt.sign(
-    { id: user.id, email: user.email, username: user.username },
+    { id: user.id, email: user.email, username: user.username }, // Include username
     process.env.JWT_SECRET,
     { expiresIn: "1h" }
   );
@@ -97,10 +97,13 @@ app.post("/login", async (req, res) => {
   }
 });
 
-// 🔹 **Fetch User Profile**
+// 🔹 **Fetch User Profile (Returns Username)**
 app.get("/user", authenticateUser, async (req, res) => {
   try {
-    const result = await pool.query("SELECT username, email FROM users WHERE email = $1", [req.user.email]);
+    const result = await pool.query(
+      "SELECT username, email FROM users WHERE email = $1",
+      [req.user.email]
+    );
     res.json(result.rows[0] || {});
   } catch (error) {
     res.status(500).json({ error: "Database error" });
@@ -112,6 +115,10 @@ app.post("/add-expense", authenticateUser, async (req, res) => {
   const { title, amount, quantity } = req.body;
   const email = req.user.email;
 
+  if (!title || !amount) {
+    return res.status(400).json({ error: "Title and Amount are required" });
+  }
+
   try {
     const result = await pool.query(
       "INSERT INTO expenses (email, title, amount, quantity, created_at) VALUES ($1, $2, $3, $4, NOW()) RETURNING *",
@@ -119,14 +126,17 @@ app.post("/add-expense", authenticateUser, async (req, res) => {
     );
     res.status(201).json({ message: "Expense added successfully!", expense: result.rows[0] });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: "Database error" });
   }
 });
 
-// 🔹 **Fetch Expenses for Logged-in User**
+// 🔹 **Fetch All Expenses for Logged-in User**
 app.get("/expenses", authenticateUser, async (req, res) => {
   try {
-    const result = await pool.query("SELECT * FROM expenses WHERE email = $1 ORDER BY created_at DESC", [req.user.email]);
+    const result = await pool.query(
+      "SELECT id, title, amount, quantity, created_at FROM expenses WHERE email = $1 ORDER BY created_at DESC",
+      [req.user.email]
+    );
     res.json(result.rows);
   } catch (error) {
     res.status(500).json({ error: "Database error" });
@@ -140,7 +150,10 @@ app.put("/update-expense/:id", authenticateUser, async (req, res) => {
   const email = req.user.email;
 
   try {
-    await pool.query("UPDATE expenses SET title = $1, amount = $2, quantity = $3 WHERE id = $4 AND email = $5", [title, amount, quantity, id, email]);
+    await pool.query(
+      "UPDATE expenses SET title = $1, amount = $2, quantity = $3 WHERE id = $4 AND email = $5",
+      [title, amount, quantity, id, email]
+    );
     res.json({ message: "Expense updated successfully" });
   } catch (error) {
     res.status(500).json({ error: "Database error" });
