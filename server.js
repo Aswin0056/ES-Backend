@@ -70,22 +70,24 @@ app.post("/register", async (req, res) => {
 });
 
 // 🔹 User Login
-app.post("/login", async (req, res) => {
-  const { email, password } = req.body;
+app.post('/login', async (req, res) => {
   try {
-    const userQuery = await pool.query("SELECT * FROM users WHERE email = $1", [email]);
-    if (userQuery.rows.length === 0) return res.status(400).json({ error: "User not found" });
-    const user = userQuery.rows[0];
-    const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) {
-      return res.status(401).json({ error: "Invalid credentials" });
-    }
-    const { accessToken, refreshToken } = generateToken(user);
-    res.json({ message: "Login successful", accessToken, refreshToken, username: user.username });
+      const { email, password } = req.body;
+      console.log('Login request received:', email); // Debugging line
+
+      const user = await User.findOne({ where: { email } });
+      if (!user) return res.status(401).json({ error: "User not found" });
+
+      const isMatch = await bcrypt.compare(password, user.password);
+      if (!isMatch) return res.status(401).json({ error: "Invalid password" });
+
+      res.json({ message: "Login successful", user });
   } catch (error) {
-    res.status(500).json({ error: "Server error" });
+      console.error("Login Error:", error); // Log the actual error
+      res.status(500).json({ error: "Server error" });
   }
 });
+
 
 // 🔹 Refresh Token Route
 app.post("/refresh-token", (req, res) => {
