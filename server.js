@@ -16,7 +16,7 @@ const pool = new Pool({
 
 // ✅ CORS Configuration
 app.use(cors({
-  origin: ["https://expensaver.netlify.app"], // Allow frontend
+  origin: [process.env.FRONTEND_URL || "http://localhost:3000"],
   methods: ["GET", "POST", "PUT", "DELETE"],
   allowedHeaders: ["Content-Type", "Authorization"]
 }));
@@ -25,35 +25,23 @@ app.use(express.json());
 
 // 🔑 JWT Token Generation
 const generateToken = (user) => {
-  const accessToken = jwt.sign({ userId: user.id, email: user.email }, process.env.JWT_SECRET, { expiresIn: "15m" });
-  const refreshToken = jwt.sign({ userId: user.id, email: user.email }, process.env.JWT_REFRESH_SECRET, { expiresIn: "7d" });
-  return { accessToken, refreshToken };
+  return jwt.sign({ userId: user.id, email: user.email }, process.env.JWT_SECRET, { expiresIn: "1h" });
 };
 
 // 🟢 REGISTER USER
 app.post("/register", async (req, res) => {
   try {
     const { email, password } = req.body;
+    if (!email || !password) return res.status(400).json({ error: "Email and password are required" });
     
-    // 🔍 Check if user already exists
     const userExists = await pool.query("SELECT * FROM users WHERE email = $1", [email]);
-    if (userExists.rows.length > 0) {
-      return res.status(400).json({ error: "User already exists" });
-    }
-
-    // 🔐 Hash password
-    const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(password, salt);
-
-    // 📝 Insert new user
-    const newUser = await pool.query(
-      "INSERT INTO users (email, password) VALUES ($1, $2) RETURNING *",
-      [email, hashedPassword]
-    );
-
-    const { accessToken, refreshToken } = generateToken(newUser.rows[0]);
-    res.status(201).json({ message: "Registration successful!", accessToken, refreshToken });
-
+    if (userExists.rows.length > 0) return res.status(400).json({ error: "User already exists" });
+    
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const newUser = await pool.query("INSERT INTO users (email, password) VALUES ($1, $2) RETURNING id, email", [email, hashedPassword]);
+    
+    const token = generateToken(newUser.rows[0]);
+    res.status(201).json({ message: "Registration successful!", token });
   } catch (error) {
     console.error("Register Error:", error.message);
     res.status(500).json({ error: "Server error" });
@@ -64,28 +52,17 @@ app.post("/register", async (req, res) => {
 app.post("/login", async (req, res) => {
   try {
     const { email, password } = req.body;
-    console.log(`Login attempt for: ${email}`);
-
-    // 🔎 Find user
+    if (!email || !password) return res.status(400).json({ error: "Email and password are required" });
+    
     const userQuery = await pool.query("SELECT * FROM users WHERE email = $1", [email]);
-    if (userQuery.rows.length === 0) {
-      console.log("❌ User not found");
-      return res.status(401).json({ error: "User not found" });
-    }
-
+    if (userQuery.rows.length === 0) return res.status(401).json({ error: "User not found" });
+    
     const user = userQuery.rows[0];
-
-    // 🔑 Check password
     const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) {
-      console.log("❌ Invalid password");
-      return res.status(401).json({ error: "Invalid password" });
-    }
-
-    // ✅ Generate JWT tokens
-    const { accessToken, refreshToken } = generateToken(user);
-    res.json({ message: "✅ Login successful", accessToken, refreshToken });
-
+    if (!isMatch) return res.status(401).json({ error: "Invalid credentials" });
+    
+    const token = generateToken(user);
+    res.json({ message: "Login successful", token });
   } catch (error) {
     console.error("Login Error:", error.message);
     res.status(500).json({ error: "Server error" });
