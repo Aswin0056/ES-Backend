@@ -1,149 +1,128 @@
 require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
+const { Pool } = require("pg");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
-const { Pool } = require("pg");
 
 const app = express();
-app.use(express.json());
-app.use(cors());
+const PORT = process.env.PORT || 5000;
 
-// Database connection
+// 🛠️ PostgreSQL Database Connection
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false },
+  ssl: process.env.DATABASE_URL.includes("localhost") ? false : { rejectUnauthorized: false },
 });
 
-pool.connect((err) => {
-  if (err) {
-    console.error("PostgreSQL connection failed:", err);
-  } else {
-    console.log("✅ Connected to PostgreSQL Database");
-  }
-});
+// ✅ CORS Configuration
+app.use(cors({
+  origin: ["https://expensaver.netlify.app"], // Allow frontend
+  methods: ["GET", "POST", "PUT", "DELETE"],
+  allowedHeaders: ["Content-Type", "Authorization"]
+}));
 
-// 🔹 Generate JWT Token with Refresh Token Support
+app.use(express.json());
+
+// 🔑 JWT Token Generation
 const generateToken = (user) => {
-  const accessToken = jwt.sign(
-    { id: user.id, email: user.email, username: user.username },
-    process.env.JWT_SECRET,
-    { expiresIn: "15m" }
-  );
-  const refreshToken = jwt.sign({ id: user.id }, process.env.JWT_REFRESH_SECRET, {
-    expiresIn: "7d",
-  });
+  const accessToken = jwt.sign({ userId: user.id, email: user.email }, process.env.JWT_SECRET, { expiresIn: "15m" });
+  const refreshToken = jwt.sign({ userId: user.id, email: user.email }, process.env.JWT_REFRESH_SECRET, { expiresIn: "7d" });
   return { accessToken, refreshToken };
 };
 
-// 🔹 Middleware for authentication
-const authenticateUser = (req, res, next) => {
-  const token = req.headers.authorization;
-  if (!token) {
-    return res.status(401).json({ error: "Unauthorized - No Token Provided" });
-  }
-  const extractedToken = token.startsWith("Bearer ") ? token.split(" ")[1] : token;
-  jwt.verify(extractedToken, process.env.JWT_SECRET, (err, decoded) => {
-    if (err) {
-      return res.status(403).json({ error: "Session expired. Please log in again." });
-    }
-    req.user = decoded;
-    next();
-  });
-};
-
-// 🔹 User Registration
+// 🟢 REGISTER USER
 app.post("/register", async (req, res) => {
-  const { username, email, password } = req.body;
-  if (!username || !email || !password) {
-    return res.status(400).json({ error: "All fields are required" });
-  }
   try {
-    const userCheck = await pool.query("SELECT * FROM users WHERE email = $1", [email]);
-    if (userCheck.rows.length > 0) {
+    const { email, password } = req.body;
+    
+    // 🔍 Check if user already exists
+    const userExists = await pool.query("SELECT * FROM users WHERE email = $1", [email]);
+    if (userExists.rows.length > 0) {
       return res.status(400).json({ error: "User already exists" });
     }
-    const hashedPassword = await bcrypt.hash(password, 10);
-    await pool.query(
-      "INSERT INTO users (username, email, password) VALUES ($1, $2, $3)",
-      [username, email, hashedPassword]
+
+    // 🔐 Hash password
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(password, salt);
+
+    // 📝 Insert new user
+    const newUser = await pool.query(
+      "INSERT INTO users (email, password) VALUES ($1, $2) RETURNING *",
+      [email, hashedPassword]
     );
-    res.json({ message: "Registration successful!" });
+
+    const { accessToken, refreshToken } = generateToken(newUser.rows[0]);
+    res.status(201).json({ message: "Registration successful!", accessToken, refreshToken });
+
   } catch (error) {
-    console.error("Registration Error:", error);
-    res.status(500).json({ error: "Database error" });
+    console.error("Register Error:", error.message);
+    res.status(500).json({ error: "Server error" });
   }
 });
 
-// 🔹 User Login
+// 🔵 LOGIN USER
 app.post("/login", async (req, res) => {
   try {
     const { email, password } = req.body;
-    console.log("Login request received:", email); // Debugging line
+    console.log(`Login attempt for: ${email}`);
 
-    // Correct PostgreSQL query
+    // 🔎 Find user
     const userQuery = await pool.query("SELECT * FROM users WHERE email = $1", [email]);
+    if (userQuery.rows.length === 0) {
+      console.log("❌ User not found");
+      return res.status(401).json({ error: "User not found" });
+    }
+
     const user = userQuery.rows[0];
 
-    if (!user) return res.status(401).json({ error: "User not found" });
-
+    // 🔑 Check password
     const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) return res.status(401).json({ error: "Invalid password" });
+    if (!isMatch) {
+      console.log("❌ Invalid password");
+      return res.status(401).json({ error: "Invalid password" });
+    }
 
-    // Generate JWT tokens
+    // ✅ Generate JWT tokens
     const { accessToken, refreshToken } = generateToken(user);
+    res.json({ message: "✅ Login successful", accessToken, refreshToken });
 
-    res.json({ message: "Login successful", accessToken, refreshToken });
   } catch (error) {
-    console.error("Login Error:", error);
+    console.error("Login Error:", error.message);
     res.status(500).json({ error: "Server error" });
   }
 });
 
-// 🔹 Refresh Token Route
-app.post("/refresh-token", async (req, res) => {
-  const { refreshToken } = req.body;
-  if (!refreshToken) return res.status(401).json({ error: "Unauthorized" });
+// 🟠 AUTHENTICATION MIDDLEWARE
+const authenticateToken = (req, res, next) => {
+  const token = req.header("Authorization");
+  if (!token) return res.status(401).json({ error: "Access denied" });
 
-  jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET, async (err, decoded) => {
-    if (err) return res.status(403).json({ error: "Invalid refresh token" });
-
-    const userQuery = await pool.query("SELECT * FROM users WHERE id = $1", [decoded.id]);
-    if (userQuery.rows.length === 0) return res.status(403).json({ error: "User not found" });
-
-    const { accessToken, refreshToken: newRefreshToken } = generateToken(userQuery.rows[0]);
-    res.json({ accessToken, refreshToken: newRefreshToken });
-  });
-});
-
-// 🔹 Logout Route
-app.post("/logout", (req, res) => {
-  res.json({ message: "Logged out successfully" });
-});
-
-// 🔹 Protected Route Example
-app.get("/dashboard", authenticateUser, async (req, res) => {
   try {
-    const userQuery = await pool.query("SELECT * FROM users WHERE id = $1", [req.user.id]);
-    if (userQuery.rows.length === 0) return res.status(403).json({ error: "User not found" });
-
-    res.json({ message: `Welcome ${userQuery.rows[0].username}!`, user: userQuery.rows[0] });
+    const verified = jwt.verify(token.split(" ")[1], process.env.JWT_SECRET);
+    req.user = verified;
+    next();
   } catch (error) {
-    console.error("Dashboard Error:", error);
+    res.status(403).json({ error: "Invalid token" });
+  }
+};
+
+// 🟣 GET USER DASHBOARD (Protected Route)
+app.get("/dashboard", authenticateToken, async (req, res) => {
+  try {
+    const user = await pool.query("SELECT id, email FROM users WHERE id = $1", [req.user.userId]);
+    res.json(user.rows[0]);
+  } catch (error) {
+    console.error("Dashboard Error:", error.message);
     res.status(500).json({ error: "Server error" });
   }
 });
 
+// 🛑 404 Handler
+app.use((req, res) => {
+  res.status(404).json({ error: "Route not found" });
+});
 
-app.use(cors({
-  origin: "https://expensaver.netlify.app", // Allow frontend origin
-  methods: "GET, POST, PUT, DELETE",
-  allowedHeaders: "Content-Type, Authorization"
-}));
-
-
-// Start the server
-const PORT = process.env.PORT || 5000;
+// 🚀 Start Server
 app.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
+  console.log(`✅ Server running on port ${PORT}`);
 });
