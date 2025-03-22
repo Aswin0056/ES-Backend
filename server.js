@@ -16,7 +16,7 @@ const pool = new Pool({
 
 // ✅ CORS Configuration
 app.use(cors({
-  origin: [process.env.FRONTEND_URL || "http://localhost:3000"],
+  origin: process.env.FRONTEND_URL || "http://localhost:3000",
   methods: ["GET", "POST", "PUT", "DELETE"],
   allowedHeaders: ["Content-Type", "Authorization"]
 }));
@@ -41,7 +41,7 @@ app.post("/register", async (req, res) => {
     const newUser = await pool.query("INSERT INTO users (email, password) VALUES ($1, $2) RETURNING id, email", [email, hashedPassword]);
     
     const token = generateToken(newUser.rows[0]);
-    res.status(201).json({ message: "Registration successful!", token });
+    res.status(201).json({ message: "Registration successful!", token, user: newUser.rows[0] });
   } catch (error) {
     console.error("Register Error:", error.message);
     res.status(500).json({ error: "Server error" });
@@ -62,7 +62,7 @@ app.post("/login", async (req, res) => {
     if (!isMatch) return res.status(401).json({ error: "Invalid credentials" });
     
     const token = generateToken(user);
-    res.json({ message: "Login successful", token });
+    res.json({ message: "Login successful", token, user: { id: user.id, email: user.email } });
   } catch (error) {
     console.error("Login Error:", error.message);
     res.status(500).json({ error: "Server error" });
