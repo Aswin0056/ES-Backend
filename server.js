@@ -9,6 +9,7 @@ const app = express();
 app.use(express.json());
 app.use(cors());
 
+// Database connection
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: { rejectUnauthorized: false },
@@ -22,7 +23,7 @@ pool.connect((err) => {
   }
 });
 
-// Generate JWT Token with Refresh Token Support
+// 🔹 Generate JWT Token with Refresh Token Support
 const generateToken = (user) => {
   const accessToken = jwt.sign(
     { id: user.id, email: user.email, username: user.username },
@@ -35,6 +36,7 @@ const generateToken = (user) => {
   return { accessToken, refreshToken };
 };
 
+// 🔹 Middleware for authentication
 const authenticateUser = (req, res, next) => {
   const token = req.headers.authorization;
   if (!token) {
@@ -62,41 +64,53 @@ app.post("/register", async (req, res) => {
       return res.status(400).json({ error: "User already exists" });
     }
     const hashedPassword = await bcrypt.hash(password, 10);
-    await pool.query("INSERT INTO users (username, email, password) VALUES ($1, $2, $3)", [username, email, hashedPassword]);
+    await pool.query(
+      "INSERT INTO users (username, email, password) VALUES ($1, $2, $3)",
+      [username, email, hashedPassword]
+    );
     res.json({ message: "Registration successful!" });
   } catch (error) {
+    console.error("Registration Error:", error);
     res.status(500).json({ error: "Database error" });
   }
 });
 
 // 🔹 User Login
-app.post('/login', async (req, res) => {
+app.post("/login", async (req, res) => {
   try {
-      const { email, password } = req.body;
-      console.log('Login request received:', email); // Debugging line
+    const { email, password } = req.body;
+    console.log("Login request received:", email); // Debugging line
 
-      const user = await User.findOne({ where: { email } });
-      if (!user) return res.status(401).json({ error: "User not found" });
+    // Correct PostgreSQL query
+    const userQuery = await pool.query("SELECT * FROM users WHERE email = $1", [email]);
+    const user = userQuery.rows[0];
 
-      const isMatch = await bcrypt.compare(password, user.password);
-      if (!isMatch) return res.status(401).json({ error: "Invalid password" });
+    if (!user) return res.status(401).json({ error: "User not found" });
 
-      res.json({ message: "Login successful", user });
+    const isMatch = await bcrypt.compare(password, user.password);
+    if (!isMatch) return res.status(401).json({ error: "Invalid password" });
+
+    // Generate JWT tokens
+    const { accessToken, refreshToken } = generateToken(user);
+
+    res.json({ message: "Login successful", accessToken, refreshToken });
   } catch (error) {
-      console.error("Login Error:", error); // Log the actual error
-      res.status(500).json({ error: "Server error" });
+    console.error("Login Error:", error);
+    res.status(500).json({ error: "Server error" });
   }
 });
 
-
 // 🔹 Refresh Token Route
-app.post("/refresh-token", (req, res) => {
+app.post("/refresh-token", async (req, res) => {
   const { refreshToken } = req.body;
   if (!refreshToken) return res.status(401).json({ error: "Unauthorized" });
+
   jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET, async (err, decoded) => {
     if (err) return res.status(403).json({ error: "Invalid refresh token" });
+
     const userQuery = await pool.query("SELECT * FROM users WHERE id = $1", [decoded.id]);
     if (userQuery.rows.length === 0) return res.status(403).json({ error: "User not found" });
+
     const { accessToken, refreshToken: newRefreshToken } = generateToken(userQuery.rows[0]);
     res.json({ accessToken, refreshToken: newRefreshToken });
   });
@@ -107,6 +121,20 @@ app.post("/logout", (req, res) => {
   res.json({ message: "Logged out successfully" });
 });
 
+// 🔹 Protected Route Example
+app.get("/dashboard", authenticateUser, async (req, res) => {
+  try {
+    const userQuery = await pool.query("SELECT * FROM users WHERE id = $1", [req.user.id]);
+    if (userQuery.rows.length === 0) return res.status(403).json({ error: "User not found" });
+
+    res.json({ message: `Welcome ${userQuery.rows[0].username}!`, user: userQuery.rows[0] });
+  } catch (error) {
+    console.error("Dashboard Error:", error);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+// Start the server
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
