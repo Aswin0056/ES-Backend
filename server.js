@@ -133,7 +133,7 @@ app.get("/dashboard", authenticateUser, async (req, res) => {
     res.status(500).json({ error: "Server error" });
   }
 });
-const cors = require("cors");
+
 
 app.use(cors({
   origin: "https://expensaver.netlify.app", // Allow frontend origin
