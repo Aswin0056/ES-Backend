@@ -25,21 +25,24 @@ app.use(express.json());
 
 // 🔑 JWT Token Generation
 const generateToken = (user) => {
-  return jwt.sign({ userId: user.id, email: user.email }, process.env.JWT_SECRET, { expiresIn: "1h" });
+  return jwt.sign({ userId: user.id, email: user.email, username: user.username }, process.env.JWT_SECRET, { expiresIn: "1h" });
 };
 
 // 🟢 REGISTER USER
 app.post("/register", async (req, res) => {
   try {
-    const { email, password } = req.body;
-    if (!email || !password) return res.status(400).json({ error: "Email and password are required" });
-    
+    const { username, email, password } = req.body;
+    if (!username || !email || !password) return res.status(400).json({ error: "Username, email, and password are required" });
+
     const userExists = await pool.query("SELECT * FROM users WHERE email = $1", [email]);
     if (userExists.rows.length > 0) return res.status(400).json({ error: "User already exists" });
-    
+
     const hashedPassword = await bcrypt.hash(password, 10);
-    const newUser = await pool.query("INSERT INTO users (email, password) VALUES ($1, $2) RETURNING id, email", [email, hashedPassword]);
-    
+    const newUser = await pool.query(
+      "INSERT INTO users (username, email, password) VALUES ($1, $2, $3) RETURNING id, username, email",
+      [username, email, hashedPassword]
+    );
+
     const token = generateToken(newUser.rows[0]);
     res.status(201).json({ message: "Registration successful!", token, user: newUser.rows[0] });
   } catch (error) {
@@ -53,45 +56,53 @@ app.post("/login", async (req, res) => {
   try {
     const { email, password } = req.body;
     if (!email || !password) return res.status(400).json({ error: "Email and password are required" });
-    
+
     const userQuery = await pool.query("SELECT * FROM users WHERE email = $1", [email]);
     if (userQuery.rows.length === 0) return res.status(401).json({ error: "User not found" });
-    
+
     const user = userQuery.rows[0];
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) return res.status(401).json({ error: "Invalid credentials" });
-    
+
     const token = generateToken(user);
-    res.json({ message: "Login successful", token, user: { id: user.id, email: user.email } });
+    res.json({ message: "Login successful", token, user: { id: user.id, username: user.username, email: user.email } });
   } catch (error) {
     console.error("Login Error:", error.message);
     res.status(500).json({ error: "Server error" });
   }
 });
 
-// 🟠 AUTHENTICATION MIDDLEWARE
+// 🔐 AUTHENTICATION MIDDLEWARE
 const authenticateToken = (req, res, next) => {
-  const token = req.header("Authorization");
-  if (!token) return res.status(401).json({ error: "Access denied" });
+  const authHeader = req.header("Authorization");
+  if (!authHeader) return res.status(401).json({ error: "Access denied, token missing" });
+
+  const token = authHeader.split(" ")[1];
+  if (!token) return res.status(401).json({ error: "Invalid token format" });
 
   try {
-    const verified = jwt.verify(token.split(" ")[1], process.env.JWT_SECRET);
+    const verified = jwt.verify(token, process.env.JWT_SECRET);
     req.user = verified;
     next();
   } catch (error) {
-    res.status(403).json({ error: "Invalid token" });
+    res.status(403).json({ error: "Invalid or expired token" });
   }
 };
 
 // 🟣 GET USER DASHBOARD (Protected Route)
 app.get("/dashboard", authenticateToken, async (req, res) => {
   try {
-    const user = await pool.query("SELECT id, email FROM users WHERE id = $1", [req.user.userId]);
+    const user = await pool.query("SELECT id, username, email FROM users WHERE id = $1", [req.user.userId]);
     res.json(user.rows[0]);
   } catch (error) {
     console.error("Dashboard Error:", error.message);
     res.status(500).json({ error: "Server error" });
   }
+});
+
+// 🔴 LOGOUT USER (Optional)
+app.post("/logout", (req, res) => {
+  res.json({ message: "User logged out successfully" });
 });
 
 // 🛑 404 Handler
