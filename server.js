@@ -8,20 +8,40 @@ const jwt = require("jsonwebtoken");
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// 🛠️ PostgreSQL Database Connection
+// 🔧 PostgreSQL Database Connection
+if (!process.env.DATABASE_URL) {
+  console.error("❌ ERROR: Missing DATABASE_URL in environment variables!");
+  process.exit(1);
+}
+
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: process.env.DATABASE_URL.includes("localhost") ? false : { rejectUnauthorized: false },
 });
 
 // ✅ CORS Configuration
+const allowedOrigins = [process.env.FRONTEND_URL, "http://localhost:3000", "https://expensaver.netlify.app"];
+
 app.use(
   cors({
-    origin: process.env.FRONTEND_URL || "http://localhost:3000",
+    origin: (origin, callback) => {
+      if (!origin || allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error("CORS Policy: Not allowed"));
+      }
+    },
     methods: ["GET", "POST", "PUT", "DELETE"],
     allowedHeaders: ["Content-Type", "Authorization"],
   })
 );
+
+// ✅ Debugging Logs for CORS Issues
+app.use((req, res, next) => {
+  console.log(`🟢 Request from: ${req.headers.origin}`);
+  next();
+});
+
 app.use(express.json());
 
 // 🔑 JWT Token Generation
@@ -54,11 +74,14 @@ const authenticateToken = (req, res, next) => {
 app.post("/register", async (req, res) => {
   try {
     const { username, email, password } = req.body;
-    if (!username || !email || !password)
+    if (!username || !email || !password) {
       return res.status(400).json({ error: "Username, email, and password are required" });
+    }
 
     const userExists = await pool.query("SELECT * FROM users WHERE email = $1", [email]);
-    if (userExists.rows.length > 0) return res.status(400).json({ error: "User already exists" });
+    if (userExists.rows.length > 0) {
+      return res.status(400).json({ error: "User already exists" });
+    }
 
     const hashedPassword = await bcrypt.hash(password, 10);
     const newUser = await pool.query(
@@ -78,14 +101,20 @@ app.post("/register", async (req, res) => {
 app.post("/login", async (req, res) => {
   try {
     const { email, password } = req.body;
-    if (!email || !password) return res.status(400).json({ error: "Email and password are required" });
+    if (!email || !password) {
+      return res.status(400).json({ error: "Email and password are required" });
+    }
 
     const userQuery = await pool.query("SELECT * FROM users WHERE email = $1", [email]);
-    if (userQuery.rows.length === 0) return res.status(401).json({ error: "User not found" });
+    if (userQuery.rows.length === 0) {
+      return res.status(401).json({ error: "User not found" });
+    }
 
     const user = userQuery.rows[0];
     const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) return res.status(401).json({ error: "Invalid credentials" });
+    if (!isMatch) {
+      return res.status(401).json({ error: "Invalid credentials" });
+    }
 
     const token = generateToken(user);
     res.json({
@@ -108,7 +137,7 @@ app.get("/admin/users-expenses", authenticateToken, async (req, res) => {
 
     const usersWithExpenses = await pool.query(`
       SELECT users.id, users.username, users.email, 
-             json_agg(expenses.*) AS expenses
+             COALESCE(json_agg(expenses.*) FILTER (WHERE expenses.id IS NOT NULL), '[]') AS expenses
       FROM users
       LEFT JOIN expenses ON users.id = expenses.user_id
       GROUP BY users.id
@@ -132,15 +161,38 @@ app.get("/dashboard", authenticateToken, async (req, res) => {
   }
 });
 
+app.get("/expenses", authenticateToken, async (req, res) => {
+  try {
+    const expenses = await pool.query("SELECT * FROM expenses WHERE user_id = $1", [req.user.userId]);
+    res.json(expenses.rows);
+  } catch (error) {
+    console.error("Fetch Expenses Error:", error.message);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
 // 🟡 ADD EXPENSE (Protected)
 app.post("/expenses", authenticateToken, async (req, res) => {
   try {
     const { title, amount, quantity } = req.body;
-    if (!title || !amount) return res.status(400).json({ error: "Title and amount are required" });
 
+    if (!title || !amount) {
+      return res.status(400).json({ error: "Title and amount are required" });
+    }
+
+    // Find user by email
+    const userQuery = await pool.query("SELECT id FROM users WHERE email = $1", [req.user.email]);
+
+    if (userQuery.rows.length === 0) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    const userId = userQuery.rows[0].id;
+
+    // Insert expense into database
     const newExpense = await pool.query(
-      "INSERT INTO expenses (user_id, title, amount, quantity, date) VALUES ($1, $2, $3, $4, NOW()) RETURNING *",
-      [req.user.userId, title, amount, quantity || null]
+      "INSERT INTO expenses (user_id, title, amount, quantity) VALUES ($1, $2, $3, $4) RETURNING *",
+      [userId, title, amount, quantity || 1]
     );
 
     res.status(201).json({ message: "Expense added successfully!", expense: newExpense.rows[0] });
@@ -150,16 +202,43 @@ app.post("/expenses", authenticateToken, async (req, res) => {
   }
 });
 
+
+
 // 🔴 DELETE EXPENSE (Protected)
+app.put("/expenses/:id", authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { title, amount, quantity } = req.body;
+
+    const updatedExpense = await pool.query(
+      "UPDATE expenses SET title = $1, amount = $2, quantity = $3 WHERE id = $4 AND user_id = $5 RETURNING *",
+      [title, amount, quantity, id, req.user.userId]
+    );
+
+    if (updatedExpense.rowCount === 0) {
+      return res.status(404).json({ error: "Expense not found or unauthorized" });
+    }
+
+    res.json({ message: "Expense updated successfully!", expense: updatedExpense.rows[0] });
+  } catch (error) {
+    console.error("Update Expense Error:", error.message);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+// 🔹 Delete Expense
 app.delete("/expenses/:id", authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
-    const deletedExpense = await pool.query("DELETE FROM expenses WHERE id = $1 AND user_id = $2 RETURNING *", [
-      id,
-      req.user.userId,
-    ]);
 
-    if (deletedExpense.rowCount === 0) return res.status(404).json({ error: "Expense not found or unauthorized" });
+    const deletedExpense = await pool.query(
+      "DELETE FROM expenses WHERE id = $1 AND user_id = $2 RETURNING *",
+      [id, req.user.userId]
+    );
+
+    if (deletedExpense.rowCount === 0) {
+      return res.status(404).json({ error: "Expense not found or unauthorized" });
+    }
 
     res.json({ message: "Expense deleted successfully!" });
   } catch (error) {
@@ -167,6 +246,36 @@ app.delete("/expenses/:id", authenticateToken, async (req, res) => {
     res.status(500).json({ error: "Server error" });
   }
 });
+
+
+app.put("/update-expense/:id", authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { title, amount, quantity } = req.body;
+    await pool.query(
+      "UPDATE expenses SET title = $1, amount = $2, quantity = $3 WHERE id = $4",
+      [title, amount, quantity, id]
+    );
+    res.json({ message: "Expense updated successfully" });
+  } catch (error) {
+    console.error("Update Expense Error:", error.message);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+
+app.delete("/delete-expense/:id", authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    await pool.query("DELETE FROM expenses WHERE id = $1", [id]);
+    res.json({ message: "Expense deleted successfully" });
+  } catch (error) {
+    console.error("Delete Expense Error:", error.message);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+
 
 // 🛑 404 Handler
 app.use((req, res) => {
