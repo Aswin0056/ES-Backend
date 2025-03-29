@@ -8,7 +8,7 @@ const jwt = require("jsonwebtoken");
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// 🔧 PostgreSQL Database Connection
+// 🔧 PostgreSQL Connection
 if (!process.env.DATABASE_URL) {
   console.error("❌ ERROR: Missing DATABASE_URL in environment variables!");
   process.exit(1);
@@ -64,8 +64,10 @@ const authenticateToken = (req, res, next) => {
   try {
     const verified = jwt.verify(token, process.env.JWT_SECRET);
     req.user = verified;
+    console.log("✅ Authenticated User:", verified);
     next();
   } catch (error) {
+    console.error("❌ Invalid Token:", error.message);
     res.status(403).json({ error: "Invalid or expired token" });
   }
 };
@@ -133,7 +135,8 @@ app.get("/admin/users-expenses", authenticateToken, async (req, res) => {
   try {
     console.log("🟢 Admin Users-Expenses Request from:", req.user);
 
-    if (req.user.username !== "admin") {
+    // ✅ CHECK ADMIN EMAIL
+    if (req.user.email !== process.env.ADMIN_EMAIL) {
       return res.status(403).json({ error: "Access denied: Admins only" });
     }
 
@@ -153,7 +156,6 @@ app.get("/admin/users-expenses", authenticateToken, async (req, res) => {
   }
 });
 
-
 // 🟣 GET USER DASHBOARD
 app.get("/dashboard", authenticateToken, async (req, res) => {
   try {
@@ -165,38 +167,15 @@ app.get("/dashboard", authenticateToken, async (req, res) => {
   }
 });
 
-app.get("/expenses", authenticateToken, async (req, res) => {
-  try {
-    const expenses = await pool.query("SELECT * FROM expenses WHERE user_id = $1", [req.user.userId]);
-    res.json(expenses.rows);
-  } catch (error) {
-    console.error("Fetch Expenses Error:", error.message);
-    res.status(500).json({ error: "Server error" });
-  }
-});
-
-// 🟡 ADD EXPENSE (Protected)
+// ✅ CRUD EXPENSES
 app.post("/expenses", authenticateToken, async (req, res) => {
   try {
-    const { title, amount, quantity } = req.body;
+    const { title, amount, quantity = 1 } = req.body;
+    if (!title || !amount) return res.status(400).json({ error: "Title and amount are required" });
 
-    if (!title || !amount) {
-      return res.status(400).json({ error: "Title and amount are required" });
-    }
-
-    // Find user by email
-    const userQuery = await pool.query("SELECT id FROM users WHERE email = $1", [req.user.email]);
-
-    if (userQuery.rows.length === 0) {
-      return res.status(404).json({ error: "User not found" });
-    }
-
-    const userId = userQuery.rows[0].id;
-
-    // Insert expense into database
     const newExpense = await pool.query(
       "INSERT INTO expenses (user_id, title, amount, quantity) VALUES ($1, $2, $3, $4) RETURNING *",
-      [userId, title, amount, quantity || 1]
+      [req.user.userId, title, amount, quantity]
     );
 
     res.status(201).json({ message: "Expense added successfully!", expense: newExpense.rows[0] });
@@ -206,43 +185,16 @@ app.post("/expenses", authenticateToken, async (req, res) => {
   }
 });
 
-
-
-// 🔴 DELETE EXPENSE (Protected)
-app.put("/expenses/:id", authenticateToken, async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { title, amount, quantity } = req.body;
-
-    const updatedExpense = await pool.query(
-      "UPDATE expenses SET title = $1, amount = $2, quantity = $3 WHERE id = $4 AND user_id = $5 RETURNING *",
-      [title, amount, quantity, id, req.user.userId]
-    );
-
-    if (updatedExpense.rowCount === 0) {
-      return res.status(404).json({ error: "Expense not found or unauthorized" });
-    }
-
-    res.json({ message: "Expense updated successfully!", expense: updatedExpense.rows[0] });
-  } catch (error) {
-    console.error("Update Expense Error:", error.message);
-    res.status(500).json({ error: "Server error" });
-  }
-});
-
-// 🔹 Delete Expense
+// ✅ DELETE EXPENSE
 app.delete("/expenses/:id", authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
-
     const deletedExpense = await pool.query(
       "DELETE FROM expenses WHERE id = $1 AND user_id = $2 RETURNING *",
       [id, req.user.userId]
     );
 
-    if (deletedExpense.rowCount === 0) {
-      return res.status(404).json({ error: "Expense not found or unauthorized" });
-    }
+    if (deletedExpense.rowCount === 0) return res.status(404).json({ error: "Expense not found or unauthorized" });
 
     res.json({ message: "Expense deleted successfully!" });
   } catch (error) {
@@ -251,43 +203,7 @@ app.delete("/expenses/:id", authenticateToken, async (req, res) => {
   }
 });
 
-
-app.put("/update-expense/:id", authenticateToken, async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { title, amount, quantity } = req.body;
-    await pool.query(
-      "UPDATE expenses SET title = $1, amount = $2, quantity = $3 WHERE id = $4",
-      [title, amount, quantity, id]
-    );
-    res.json({ message: "Expense updated successfully" });
-  } catch (error) {
-    console.error("Update Expense Error:", error.message);
-    res.status(500).json({ error: "Server error" });
-  }
-});
-
-
-app.delete("/delete-expense/:id", authenticateToken, async (req, res) => {
-  try {
-    const { id } = req.params;
-    await pool.query("DELETE FROM expenses WHERE id = $1", [id]);
-    res.json({ message: "Expense deleted successfully" });
-  } catch (error) {
-    console.error("Delete Expense Error:", error.message);
-    res.status(500).json({ error: "Server error" });
-  }
-});
-
-
-
-// 🛑 404 Handler
-app.use((req, res) => {
-  res.status(404).json({ error: "Route not found" });
-});
-
 // 🚀 Start Server
 app.listen(PORT, () => {
   console.log(`✅ Server running on port ${PORT}`);
-  console.log(`✅ connected to Postgres_DB ${PORT}`);
 });
