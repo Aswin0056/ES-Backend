@@ -131,6 +131,8 @@ app.post("/login", async (req, res) => {
 // ✅ ADMIN: Get All Users and Their Expenses
 app.get("/admin/users-expenses", authenticateToken, async (req, res) => {
   try {
+    console.log("🟢 Admin Users-Expenses Request from:", req.user);
+
     if (req.user.username !== "admin") {
       return res.status(403).json({ error: "Access denied: Admins only" });
     }
@@ -143,12 +145,14 @@ app.get("/admin/users-expenses", authenticateToken, async (req, res) => {
       GROUP BY users.id
     `);
 
+    console.log("✅ Users and Expenses:", usersWithExpenses.rows);
     res.json(usersWithExpenses.rows);
   } catch (error) {
-    console.error("Admin Users-Expenses Error:", error.message);
-    res.status(500).json({ error: "Server error" });
+    console.error("❌ Admin Users-Expenses Error:", error.message);
+    res.status(500).json({ error: "Server error", details: error.message });
   }
 });
+
 
 // 🟣 GET USER DASHBOARD
 app.get("/dashboard", authenticateToken, async (req, res) => {
@@ -285,4 +289,5 @@ app.use((req, res) => {
 // 🚀 Start Server
 app.listen(PORT, () => {
   console.log(`✅ Server running on port ${PORT}`);
+  console.log(`✅ connected to Postgres_DB ${PORT}`);
 });
