@@ -8,7 +8,7 @@ const jwt = require("jsonwebtoken");
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// 🔧 PostgreSQL Connection
+// ✅ PostgreSQL Connection
 if (!process.env.DATABASE_URL) {
   console.error("❌ ERROR: Missing DATABASE_URL in environment variables!");
   process.exit(1);
@@ -36,12 +36,6 @@ app.use(
   })
 );
 
-// ✅ Debugging Logs for CORS Issues
-app.use((req, res, next) => {
-  console.log(`🟢 Request from: ${req.headers.origin}`);
-  next();
-});
-
 app.use(express.json());
 
 // 🔑 JWT Token Generation
@@ -53,7 +47,7 @@ const generateToken = (user) => {
   );
 };
 
-// 🔐 AUTHENTICATION MIDDLEWARE
+// 🔐 Authentication Middleware
 const authenticateToken = (req, res, next) => {
   const authHeader = req.header("Authorization");
   if (!authHeader) return res.status(401).json({ error: "Access denied, token missing" });
@@ -133,22 +127,18 @@ app.post("/login", async (req, res) => {
 // ✅ ADMIN: Get All Users and Their Expenses
 app.get("/admin/users-expenses", authenticateToken, async (req, res) => {
   try {
-    console.log("🟢 Admin Users-Expenses Request from:", req.user);
-
-    // ✅ CHECK ADMIN EMAIL
     if (req.user.email !== process.env.ADMIN_EMAIL) {
       return res.status(403).json({ error: "Access denied: Admins only" });
     }
 
     const usersWithExpenses = await pool.query(`
       SELECT users.id, users.username, users.email, 
-             COALESCE(json_agg(expenses.*) FILTER (WHERE expenses.id IS NOT NULL), '[]') AS expenses
+             COALESCE(json_agg(expenses) FILTER (WHERE expenses.id IS NOT NULL), '[]') AS expenses
       FROM users
       LEFT JOIN expenses ON users.id = expenses.user_id
-      GROUP BY users.id
+      GROUP BY users.id, users.username, users.email
     `);
 
-    console.log("✅ Users and Expenses:", usersWithExpenses.rows);
     res.json(usersWithExpenses.rows);
   } catch (error) {
     console.error("❌ Admin Users-Expenses Error:", error.message);
@@ -156,49 +146,17 @@ app.get("/admin/users-expenses", authenticateToken, async (req, res) => {
   }
 });
 
-// 🟣 GET USER DASHBOARD
-app.get("/dashboard", authenticateToken, async (req, res) => {
-  try {
-    const user = await pool.query("SELECT id, username, email FROM users WHERE id = $1", [req.user.userId]);
-    res.json(user.rows[0]);
-  } catch (error) {
-    console.error("Dashboard Error:", error.message);
-    res.status(500).json({ error: "Server error" });
-  }
-});
-
-app.get("/expenses", authenticateToken, async (req, res) => {
-  try {
-    const expenses = await pool.query("SELECT * FROM expenses WHERE user_id = $1", [req.user.userId]);
-    res.json(expenses.rows);
-  } catch (error) {
-    console.error("Fetch Expenses Error:", error.message);
-    res.status(500).json({ error: "Server error" });
-  }
-});
-
-// 🟡 ADD EXPENSE (Protected)
+// 🟡 ADD EXPENSE
 app.post("/expenses", authenticateToken, async (req, res) => {
   try {
     const { title, amount, quantity } = req.body;
-
     if (!title || !amount) {
       return res.status(400).json({ error: "Title and amount are required" });
     }
 
-    // Find user by email
-    const userQuery = await pool.query("SELECT id FROM users WHERE email = $1", [req.user.email]);
-
-    if (userQuery.rows.length === 0) {
-      return res.status(404).json({ error: "User not found" });
-    }
-
-    const userId = userQuery.rows[0].id;
-
-    // Insert expense into database
     const newExpense = await pool.query(
       "INSERT INTO expenses (user_id, title, amount, quantity) VALUES ($1, $2, $3, $4) RETURNING *",
-      [userId, title, amount, quantity || 1]
+      [req.user.userId, title, amount, quantity || 1]
     );
 
     res.status(201).json({ message: "Expense added successfully!", expense: newExpense.rows[0] });
@@ -208,31 +166,7 @@ app.post("/expenses", authenticateToken, async (req, res) => {
   }
 });
 
-
-
-// 🔴 DELETE EXPENSE (Protected)
-app.put("/expenses/:id", authenticateToken, async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { title, amount, quantity } = req.body;
-
-    const updatedExpense = await pool.query(
-      "UPDATE expenses SET title = $1, amount = $2, quantity = $3 WHERE id = $4 AND user_id = $5 RETURNING *",
-      [title, amount, quantity, id, req.user.userId]
-    );
-
-    if (updatedExpense.rowCount === 0) {
-      return res.status(404).json({ error: "Expense not found or unauthorized" });
-    }
-
-    res.json({ message: "Expense updated successfully!", expense: updatedExpense.rows[0] });
-  } catch (error) {
-    console.error("Update Expense Error:", error.message);
-    res.status(500).json({ error: "Server error" });
-  }
-});
-
-// 🔹 Delete Expense
+// ❌ DELETE EXPENSE
 app.delete("/expenses/:id", authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
@@ -253,7 +187,33 @@ app.delete("/expenses/:id", authenticateToken, async (req, res) => {
   }
 });
 
+// ✏️ UPDATE/EDIT EXPENSE
+app.put("/expenses/:id", authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { title, amount, quantity } = req.body;
 
+    if (!title || !amount) {
+      return res.status(400).json({ error: "Title and amount are required" });
+    }
+
+    const updatedExpense = await pool.query(
+      "UPDATE expenses SET title = $1, amount = $2, quantity = $3 WHERE id = $4 AND user_id = $5 RETURNING *",
+      [title, amount, quantity || 1, id, req.user.userId]
+    );
+
+    if (updatedExpense.rowCount === 0) {
+      return res.status(404).json({ error: "Expense not found or unauthorized" });
+    }
+
+    res.json({ message: "Expense updated successfully!", expense: updatedExpense.rows[0] });
+  } catch (error) {
+    console.error("Update Expense Error:", error.message);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+ 
 app.put("/update-expense/:id", authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
@@ -280,16 +240,6 @@ app.delete("/delete-expense/:id", authenticateToken, async (req, res) => {
     res.status(500).json({ error: "Server error" });
   }
 });
-
-app.get("/admin/comments", async (req, res) => {
-  try {
-    const comments = await CommentModel.find().sort({ date: -1 }); // Fetch all comments from DB
-    res.json(comments);
-  } catch (error) {
-    res.status(500).json({ message: "Error fetching comments" });
-  }
-});
-
 
 
 // 🚀 Start Server
