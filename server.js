@@ -311,7 +311,6 @@ app.get("/comments", async (req, res) => {
 const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
-const pool = require("./db"); // Your PostgreSQL connection
 
 // Ensure the uploads directory exists
 const uploadDir = path.join(__dirname, "uploads");
@@ -355,4 +354,5 @@ app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 // 🚀 Start Server
 app.listen(PORT, () => {
   console.log(`✅ Server running on port ${PORT}`);
+  console.log(`⚙️ Connected to Postgres database`);
 });
