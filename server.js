@@ -307,6 +307,22 @@ app.get("/comments", async (req, res) => {
   }
 });
 
+app.put("/profile", upload.single("profileImage"), async (req, res) => {
+  try {
+    const { username } = req.body;
+    const profileImage = req.file ? `/uploads/${req.file.filename}` : null;
+
+    // Update user in the database (MongoDB example)
+    const updatedUser = await User.findByIdAndUpdate(req.user.id, {
+      username,
+      profileImage,
+    }, { new: true });
+
+    res.json(updatedUser);
+  } catch (error) {
+    res.status(500).json({ error: "Failed to update profile" });
+  }
+});
 
 
 // 🚀 Start Server
