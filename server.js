@@ -281,6 +281,16 @@ app.delete("/delete-expense/:id", authenticateToken, async (req, res) => {
   }
 });
 
+app.get("/admin/comments", async (req, res) => {
+  try {
+    const comments = await CommentModel.find().sort({ date: -1 }); // Fetch all comments from DB
+    res.json(comments);
+  } catch (error) {
+    res.status(500).json({ message: "Error fetching comments" });
+  }
+});
+
+
 
 // 🚀 Start Server
 app.listen(PORT, () => {
