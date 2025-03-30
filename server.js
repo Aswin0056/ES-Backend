@@ -307,22 +307,49 @@ app.get("/comments", async (req, res) => {
   }
 });
 
-app.put("/profile", upload.single("profileImage"), async (req, res) => {
-  try {
-    const { username } = req.body;
-    const profileImage = req.file ? `/uploads/${req.file.filename}` : null;
 
-    // Update user in the database (MongoDB example)
-    const updatedUser = await User.findByIdAndUpdate(req.user.id, {
-      username,
-      profileImage,
-    }, { new: true });
+const multer = require("multer");
+const path = require("path");
+const fs = require("fs");
+const pool = require("./db"); // Your PostgreSQL connection
 
-    res.json(updatedUser);
-  } catch (error) {
-    res.status(500).json({ error: "Failed to update profile" });
-  }
+// Ensure the uploads directory exists
+const uploadDir = path.join(__dirname, "uploads");
+if (!fs.existsSync(uploadDir)) {
+    fs.mkdirSync(uploadDir);
+}
+
+// Configure Multer
+const storage = multer.diskStorage({
+    destination: (req, file, cb) => {
+        cb(null, "uploads/");
+    },
+    filename: (req, file, cb) => {
+        cb(null, Date.now() + path.extname(file.originalname));
+    },
 });
+
+const upload = multer({ storage });
+
+// API to upload image
+app.post("/upload", upload.single("profileImage"), async (req, res) => {
+    try {
+        const imageUrl = `/uploads/${req.file.filename}`; // Store relative path
+        const userId = req.body.userId;
+
+        // Store in PostgreSQL
+        await pool.query("UPDATE users SET profile_image = $1 WHERE id = $2", [imageUrl, userId]);
+
+        res.json({ success: true, imageUrl });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: "Server error" });
+    }
+});
+
+// Serve uploaded images statically
+app.use("/uploads", express.static(path.join(__dirname, "uploads")));
+
 
 
 // 🚀 Start Server
