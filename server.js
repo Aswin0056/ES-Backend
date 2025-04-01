@@ -4,7 +4,7 @@ const cors = require("cors");
 const { Pool } = require("pg");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
-
+const bodyParser = require("body-parser");
 const app = express();
 const PORT = process.env.PORT || 5000;
 
@@ -264,8 +264,13 @@ app.delete("/delete-expense/:id", authenticateToken, async (req, res) => {
 
 
 // comments section
-const commentRoutes = require("./routes/comments");
-app.use("/api", commentRoutes);
+app.use(cors());
+app.use(bodyParser.json());
+
+// Import routes
+const commentsRouter = require("./routes/comments");  // Ensure this path is correct
+app.use("/comments", commentsRouter);  // Make sure this matches the frontend request
+
 // comments section
 
 
