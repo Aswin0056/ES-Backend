@@ -319,17 +319,23 @@ app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 app.get("/dashboard", authenticateToken, async (req, res) => {
   try {
+    console.log("Fetching last expense for user:", req.user.userId);
+
     const lastExpense = await pool.query(
-      "SELECT * FROM expenses WHERE user_id = $1 ORDER BY id DESC LIMIT 1",
+      "SELECT * FROM expenses WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1",
       [req.user.userId]
     );
 
+    console.log("Last Expense Found:", lastExpense.rows);
+
     res.json({ lastExpense: lastExpense.rows[0] || null });
   } catch (error) {
-    console.error("Dashboard Fetch Error:", error.message);
+    console.error("❌ Dashboard Fetch Error:", error.message);
     res.status(500).json({ error: "Server error" });
   }
 });
+
+
 
 
 
