@@ -320,7 +320,7 @@ app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 app.get("/dashboard", authenticateToken, async (req, res) => {
   try {
     const lastExpense = await pool.query(
-      "SELECT * FROM expenses WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1",
+      "SELECT * FROM expenses WHERE user_id = $1 ORDER BY id DESC LIMIT 1",
       [req.user.userId]
     );
 
@@ -330,6 +330,7 @@ app.get("/dashboard", authenticateToken, async (req, res) => {
     res.status(500).json({ error: "Server error" });
   }
 });
+
 
 
 // 🚀 Start Server
