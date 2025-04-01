@@ -317,6 +317,10 @@ app.post("/upload", upload.single("profileImage"), async (req, res) => {
 // Serve uploaded images statically
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
+
+
+
+
 app.get("/dashboard", authenticateToken, async (req, res) => {
   try {
     console.log("Fetching last expense for user:", req.user.userId);
@@ -326,14 +330,19 @@ app.get("/dashboard", authenticateToken, async (req, res) => {
       [req.user.userId]
     );
 
-    console.log("Last Expense Found:", lastExpense.rows);
+    if (lastExpense.rows.length === 0) {
+      console.log("No expenses found for user.");
+      return res.json({ lastExpense: null });
+    }
 
-    res.json({ lastExpense: lastExpense.rows[0] || null });
+    console.log("Last Expense Found:", lastExpense.rows[0]);
+    res.json({ lastExpense: lastExpense.rows[0] });
   } catch (error) {
     console.error("❌ Dashboard Fetch Error:", error.message);
     res.status(500).json({ error: "Server error" });
   }
 });
+
 
 
 
