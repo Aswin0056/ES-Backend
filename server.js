@@ -317,6 +317,19 @@ app.post("/upload", upload.single("profileImage"), async (req, res) => {
 // Serve uploaded images statically
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
+app.get("/dashboard", authenticateToken, async (req, res) => {
+  try {
+    const lastExpense = await pool.query(
+      "SELECT * FROM expenses WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1",
+      [req.user.userId]
+    );
+
+    res.json({ lastExpense: lastExpense.rows[0] || null });
+  } catch (error) {
+    console.error("Dashboard Fetch Error:", error.message);
+    res.status(500).json({ error: "Server error" });
+  }
+});
 
 
 // 🚀 Start Server
