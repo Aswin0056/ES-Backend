@@ -261,51 +261,14 @@ app.delete("/delete-expense/:id", authenticateToken, async (req, res) => {
   }
 });
 
-app.post("/comments", async (req, res) => {
-  const { gmail, text } = req.body;
 
-  if (!gmail || !text) {
-      return res.status(400).json({ error: "Gmail and comment text are required" });
-  }
 
-  try {
-      const result = await db.query(
-          "INSERT INTO comments (gmail, text) VALUES ($1, $2) RETURNING *",
-          [gmail, text]
-      );
-      res.json(result.rows[0]);
-  } catch (error) {
-      res.status(500).json({ error: error.message });
-  }
-});
+// comments section
+const commentRoutes = require("./routes/comments");
+app.use("/api", commentRoutes);
+// comments section
 
-app.post("/comments", async (req, res) => {
-  const { gmail, text } = req.body;
 
-  if (!gmail || !text) {
-      return res.status(400).json({ error: "Gmail and comment text are required" });
-  }
-
-  try {
-      const result = await db.query(
-          "INSERT INTO comments (gmail, text) VALUES ($1, $2) RETURNING *",
-          [gmail, text]
-      );
-      res.json(result.rows[0]);
-  } catch (error) {
-      console.error("Database error:", error);
-      res.status(500).json({ error: error.message });
-  }
-});
-
-app.get("/comments", async (req, res) => {
-  try {
-      const result = await db.query("SELECT * FROM comments ORDER BY created_at DESC");
-      res.json(result.rows);
-  } catch (error) {
-      res.status(500).json({ error: error.message });
-  }
-});
 
 
 const multer = require("multer");
