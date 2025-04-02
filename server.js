@@ -7,7 +7,6 @@ const jwt = require("jsonwebtoken");
 const bodyParser = require("body-parser");
 const compression = require("compression");
 const helmet = require("helmet");
-const Redis = require("ioredis");
 const app = express();
 const PORT = process.env.PORT || 5000;
 
@@ -20,38 +19,42 @@ if (!process.env.DATABASE_URL) {
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: process.env.DATABASE_URL.includes("localhost") ? false : { rejectUnauthorized: false },
-  max: 20, // Increased connections
-  idleTimeoutMillis: 30000,
+  max: 10, // Max connections
+  idleTimeoutMillis: 30000, // Close idle connections after 30s
 });
 
-// ✅ Redis Setup for Caching
-const redis = new Redis(process.env.REDIS_URL);
 
 // ✅ Middleware
-app.use(compression());
-app.use(helmet());
-app.use(express.json());
-app.use(bodyParser.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(compression()); // Enable Gzip Compression
+app.use(helmet()); // Security Headers
+app.use(express.json()); // Parse JSON Requests
+app.use(bodyParser.json()); // Parse JSON
+app.use(express.urlencoded({ extended: true })); // Parse URL-Encoded Data
+
 
 // ✅ CORS Configuration
 const allowedOrigins = [process.env.FRONTEND_URL, "http://localhost:3000", "https://expensaver.netlify.app"];
-app.use(cors({
-  origin: (origin, callback) => {
-    if (!origin || allowedOrigins.includes(origin)) {
-      callback(null, true);
-    } else {
-      callback(new Error("CORS Policy: Not allowed"));
-    }
-  },
-  methods: ["GET", "POST", "PUT", "DELETE"],
-  allowedHeaders: ["Content-Type", "Authorization"],
-}));
 
-// 🔑 Generate JWT Token (Reduced Payload)
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      if (!origin || allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error("CORS Policy: Not allowed"));
+      }
+    },
+    methods: ["GET", "POST", "PUT", "DELETE"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+  })
+);
+
+app.use(express.json());
+
+// 🔑 JWT Token Generation
 const generateToken = (user) => {
   return jwt.sign(
-    { id: user.id }, // Only store user ID to reduce token size
+    { userId: user.id, email: user.email, username: user.username },
     process.env.JWT_SECRET,
     { expiresIn: "1h" }
   );
@@ -68,8 +71,10 @@ const authenticateToken = (req, res, next) => {
   try {
     const verified = jwt.verify(token, process.env.JWT_SECRET);
     req.user = verified;
+    console.log("✅ Authenticated User:", verified);
     next();
   } catch (error) {
+    console.error("❌ Invalid Token:", error.message);
     res.status(403).json({ error: "Invalid or expired token" });
   }
 };
@@ -78,10 +83,14 @@ const authenticateToken = (req, res, next) => {
 app.post("/register", async (req, res) => {
   try {
     const { username, email, password } = req.body;
-    if (!username || !email || !password) return res.status(400).json({ error: "All fields are required" });
+    if (!username || !email || !password) {
+      return res.status(400).json({ error: "Username, email, and password are required" });
+    }
 
-    const userExists = await pool.query("SELECT id FROM users WHERE email = $1", [email]);
-    if (userExists.rows.length > 0) return res.status(400).json({ error: "User already exists" });
+    const userExists = await pool.query("SELECT * FROM users WHERE email = $1", [email]);
+    if (userExists.rows.length > 0) {
+      return res.status(400).json({ error: "User already exists" });
+    }
 
     const hashedPassword = await bcrypt.hash(password, 10);
     const newUser = await pool.query(
@@ -92,36 +101,38 @@ app.post("/register", async (req, res) => {
     const token = generateToken(newUser.rows[0]);
     res.status(201).json({ message: "Registration successful!", token, user: newUser.rows[0] });
   } catch (error) {
+    console.error("Register Error:", error.message);
     res.status(500).json({ error: "Server error" });
   }
 });
 
-// 🔵 LOGIN USER (Optimized with Redis Cache)
+// 🔵 LOGIN USER
 app.post("/login", async (req, res) => {
   try {
     const { email, password } = req.body;
-    if (!email || !password) return res.status(400).json({ error: "Email and password are required" });
+    if (!email || !password) {
+      return res.status(400).json({ error: "Email and password are required" });
+    }
 
-    // ✅ Check Redis Cache
-    const cachedUser = await redis.get(`user:${email}`);
-    if (cachedUser) return res.json(JSON.parse(cachedUser));
-
-    // ✅ Fetch Only Required Fields
-    const userQuery = await pool.query("SELECT id, email, password, username FROM users WHERE email = $1", [email]);
-    if (userQuery.rows.length === 0) return res.status(401).json({ error: "User not found" });
+    const userQuery = await pool.query("SELECT * FROM users WHERE email = $1", [email]);
+    if (userQuery.rows.length === 0) {
+      return res.status(401).json({ error: "User not found" });
+    }
 
     const user = userQuery.rows[0];
     const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) return res.status(401).json({ error: "Invalid credentials" });
+    if (!isMatch) {
+      return res.status(401).json({ error: "Invalid credentials" });
+    }
 
     const token = generateToken(user);
-    const userData = { message: "Login successful", token, user: { id: user.id, username: user.username, email: user.email } };
-
-    // ✅ Cache User Data for 10 Minutes
-    await redis.set(`user:${email}`, JSON.stringify(userData), "EX", 600);
-
-    res.json(userData);
+    res.json({
+      message: "Login successful",
+      token,
+      user: { id: user.id, username: user.username, email: user.email },
+    });
   } catch (error) {
+    console.error("Login Error:", error.message);
     res.status(500).json({ error: "Server error" });
   }
 });
