@@ -5,6 +5,8 @@ const { Pool } = require("pg");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const bodyParser = require("body-parser");
+const compression = require("compression");
+const helmet = require("helmet");
 const app = express();
 const PORT = process.env.PORT || 5000;
 
@@ -17,7 +19,18 @@ if (!process.env.DATABASE_URL) {
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: process.env.DATABASE_URL.includes("localhost") ? false : { rejectUnauthorized: false },
+  max: 10, // Max connections
+  idleTimeoutMillis: 30000, // Close idle connections after 30s
 });
+
+
+// ✅ Middleware
+app.use(compression()); // Enable Gzip Compression
+app.use(helmet()); // Security Headers
+app.use(express.json()); // Parse JSON Requests
+app.use(bodyParser.json()); // Parse JSON
+app.use(express.urlencoded({ extended: true })); // Parse URL-Encoded Data
+
 
 // ✅ CORS Configuration
 const allowedOrigins = [process.env.FRONTEND_URL, "http://localhost:3000", "https://expensaver.netlify.app"];
@@ -314,6 +327,8 @@ app.post("/upload", upload.single("profileImage"), async (req, res) => {
     }
 });
 
+
+
 // Serve uploaded images statically
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
@@ -344,6 +359,10 @@ app.get("/dashboard", authenticateToken, async (req, res) => {
 });
 
 
+// ✅ Keep Server Warm (Prevent Cold Starts)
+setInterval(() => {
+  fetch(process.env.BACKEND_URL).catch(() => {}); // Adjust as needed
+}, 5 * 60 * 1000); // Every 5 minutes
 
 
 
