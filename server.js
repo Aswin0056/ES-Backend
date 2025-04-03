@@ -112,51 +112,34 @@ app.post("/login", async (req, res) => {
       return res.status(400).json({ error: "Email and password are required" });
     }
 
-    console.log(`🔍 Login attempt: ${email}`);
-
-    // 🔹 Check if the user is an admin
+    // Check if the user is an admin
     const adminQuery = await pool.query("SELECT * FROM admin_settings WHERE admin_email = $1", [email]);
     if (adminQuery.rows.length > 0) {
       const admin = adminQuery.rows[0];
-      console.log(`🔍 Admin found: ${admin.admin_email}`);
-
-      if (!admin.password) {
-        console.error("❌ Admin password is missing in database!");
-        return res.status(500).json({ error: "Admin password is missing. Please set a password in the database." });
-      }
-
       const isMatch = await bcrypt.compare(password, admin.password);
       if (!isMatch) {
-        console.warn("⚠️ Admin password does not match");
         return res.status(401).json({ error: "Invalid credentials" });
       }
-
       const token = jwt.sign({ email: admin.admin_email, role: "admin" }, process.env.JWT_SECRET, { expiresIn: "1h" });
-      console.log("✅ Admin login successful!");
       return res.json({ message: "Admin login successful", token, user: { email: admin.admin_email, role: "admin" } });
     }
 
-    // 🔹 Check regular user login
-    const userQuery = await pool.query("SELECT * FROM users WHERE email = $1", [email]);
+    // If not an admin, check the users table
+    const userQuery = await pool.query("SELECT id, username, email, password FROM users WHERE email = $1", [email]);
     if (userQuery.rows.length === 0) {
-      console.warn("⚠️ User not found in database");
-      return res.status(401).json({ error: "Invalid credentials" });
+      return res.status(401).json({ error: "User not found" });
     }
 
     const user = userQuery.rows[0];
-    console.log(`🔍 User found: ${user.email}`);
-
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
-      console.warn("⚠️ User password does not match");
       return res.status(401).json({ error: "Invalid credentials" });
     }
 
-    const token = jwt.sign({ email: user.email, role: "user" }, process.env.JWT_SECRET, { expiresIn: "1h" });
-    console.log("✅ User login successful!");
-    return res.json({ message: "Login successful", token, user });
+    const token = jwt.sign({ userId: user.id, email: user.email, role: "user" }, process.env.JWT_SECRET, { expiresIn: "1h" });
+    res.json({ message: "Login successful", token, user: { id: user.id, username: user.username, email: user.email, role: "user" } });
   } catch (error) {
-    console.error("❌ Server error:", error);
+    console.error("Login Error:", error.message);
     res.status(500).json({ error: "Server error" });
   }
 });
@@ -405,16 +388,14 @@ module.exports = router;
 
 
 
+const saltRounds = 10;
+const plainPassword = "Admin056#"; // Change this to your preferred admin password
 
-
-const enteredPassword = "Aswin056#";  // Use the password you entered in the login form
-const hashedPassword = "$2a$10$VbU9...hashedvalue...";  // Replace with the value from the database
-
-bcrypt.compare(enteredPassword, hashedPassword, (err, isMatch) => {
+bcrypt.hash(plainPassword, saltRounds, (err, hash) => {
   if (err) {
-    console.error("Error comparing password:", err);
+    console.error("Error hashing password:", err);
   } else {
-    console.log(isMatch ? "✅ Password match!" : "❌ Invalid password!");
+    console.log(`UPDATE admin_settings SET password = '${hash}' WHERE admin_email = 'expensaver.admin@gmail.com';`);
   }
 });
 
