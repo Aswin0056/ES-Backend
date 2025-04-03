@@ -360,6 +360,27 @@ app.get("/dashboard", authenticateToken, async (req, res) => {
 });
 
 
+
+const router = express.Router();
+
+router.get("/admin-email", async (req, res) => {
+    try {
+        const result = await pool.query("SELECT admin_email FROM admin_settings LIMIT 1");
+        if (result.rows.length > 0) {
+            res.json({ adminEmail: result.rows[0].admin_email });
+        } else {
+            res.status(404).json({ message: "Admin email not found" });
+        }
+    } catch (error) {
+        console.error("Error fetching admin email:", error);
+        res.status(500).json({ message: "Internal server error" });
+    }
+});
+
+module.exports = router;
+
+
+
 // ✅ Keep Server Warm (Prevent Cold Starts)
 setInterval(() => {
   fetch(`${process.env.BACKEND_URL}`).catch(() => {}); 
