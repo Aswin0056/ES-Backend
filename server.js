@@ -7,11 +7,6 @@ const jwt = require("jsonwebtoken");
 const bodyParser = require("body-parser");
 const compression = require("compression");
 const helmet = require("helmet");
-// const multer = require("multer");
-// const path = require("path");
-// const fs = require("fs");
-// const fetch = require("node-fetch"); // Ensure fetch is available
-
 const app = express();
 const PORT = process.env.PORT || 5000;
 
@@ -28,6 +23,8 @@ const pool = new Pool({
   idleTimeoutMillis: 20000, // Close idle connections sooner
 });
 
+
+
 // ✅ Middleware
 app.use(compression()); // Enable Gzip Compression
 app.use(helmet()); // Security Headers
@@ -35,8 +32,10 @@ app.use(express.json()); // Parse JSON Requests
 app.use(bodyParser.json()); // Parse JSON
 app.use(express.urlencoded({ extended: true })); // Parse URL-Encoded Data
 
+
 // ✅ CORS Configuration
 const allowedOrigins = [process.env.FRONTEND_URL, "http://localhost:3000", "https://expensaver.netlify.app"];
+
 app.use(
   cors({
     origin: (origin, callback) => {
@@ -51,10 +50,13 @@ app.use(
   })
 );
 
+app.use(express.json());
+
 // 🔑 JWT Token Generation
 const generateToken = (user) => {
   return jwt.sign({ userId: user.id }, process.env.JWT_SECRET, { expiresIn: "1h" });
 };
+
 
 // 🔐 Authentication Middleware
 const authenticateToken = (req, res, next) => {
@@ -88,7 +90,7 @@ app.post("/register", async (req, res) => {
       return res.status(400).json({ error: "User already exists" });
     }
 
-    const hashedPassword = await bcrypt.hash(password, 8);
+    const hashedPassword = await bcrypt.hash(password, 8); // Lower cost factor
     const newUser = await pool.query(
       "INSERT INTO users (username, email, password) VALUES ($1, $2, $3) RETURNING id, username, email",
       [username, email, hashedPassword]
@@ -102,7 +104,7 @@ app.post("/register", async (req, res) => {
   }
 });
 
-// 🔵 LOGIN USER & ADMIN
+// 🔵 LOGIN USER
 app.post("/login", async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -110,26 +112,25 @@ app.post("/login", async (req, res) => {
       return res.status(400).json({ error: "Email and password are required" });
     }
 
+    // Check if user is an admin
     const adminQuery = await pool.query("SELECT * FROM admin_settings WHERE admin_email = $1", [email]);
-
     if (adminQuery.rows.length > 0) {
       const admin = adminQuery.rows[0];
 
-      if (!admin.admin_password) {
+      if (!admin.password) {
         return res.status(500).json({ error: "Admin password is missing. Please set a password in the database." });
       }
 
-      const isMatch = await bcrypt.compare(password, admin.admin_password);
+      const isMatch = await bcrypt.compare(password, admin.password);
       if (!isMatch) {
         return res.status(401).json({ error: "Invalid credentials" });
       }
 
-      const token = jwt.sign({ email: admin.admin_email, role: "admin" }, process.env.JWT_SECRET, { expiresIn: "1h" });
-
+      const token = generateToken({ id: admin.id, role: "admin" });
       return res.json({ message: "Admin login successful", token, user: { email: admin.admin_email, role: "admin" } });
     }
 
-    // Check users table
+    // Check regular users
     const userQuery = await pool.query("SELECT id, username, email, password FROM users WHERE email = $1", [email]);
     if (userQuery.rows.length === 0) {
       return res.status(401).json({ error: "User not found" });
@@ -144,12 +145,9 @@ app.post("/login", async (req, res) => {
     const token = generateToken(user);
     res.json({ message: "Login successful", token, user });
   } catch (error) {
-    console.error("Login Error:", error.message);
     res.status(500).json({ error: "Server error" });
   }
 });
-
-
 
 
 // ✅ ADMIN: Get All Users and Their Expenses
