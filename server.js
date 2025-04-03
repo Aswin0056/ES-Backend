@@ -400,14 +400,14 @@ module.exports = router;
 
 
 
-const saltRounds = 10;
-const plainPassword = "Admin056#"; // Use a secure password
+const enteredPassword = "Aswin056#";  // Use the password you entered in the login form
+const hashedPassword = "$2a$10$VbU9...hashedvalue...";  // Replace with the value from the database
 
-bcrypt.hash(plainPassword, saltRounds, (err, hash) => {
+bcrypt.compare(enteredPassword, hashedPassword, (err, isMatch) => {
   if (err) {
-    console.error("Error hashing password:", err);
+    console.error("Error comparing password:", err);
   } else {
-    console.log(`UPDATE admin_settings SET password = '${hash}' WHERE admin_email = 'expensaver.admin@gmail.com';`);
+    console.log(isMatch ? "✅ Password match!" : "❌ Invalid password!");
   }
 });
 
