@@ -105,37 +105,49 @@ app.post("/register", async (req, res) => {
 });
 
 // 🔵 LOGIN USER
+const bcrypt = require("bcrypt");
+const jwt = require("jsonwebtoken");
+
 app.post("/login", async (req, res) => {
-  try {
     const { email, password } = req.body;
-    if (!email || !password) {
-      return res.status(400).json({ error: "Email and password are required" });
-    }
 
-    const userQuery = await pool.query(
-      "SELECT id, username, email, password FROM users WHERE email = $1",
-      [email]
-    );    
-    if (userQuery.rows.length === 0) {
-      return res.status(401).json({ error: "User not found" });
-    }
+    try {
+        // Check if user is an admin
+        const adminQuery = await pool.query("SELECT * FROM admin_settings WHERE admin_email = $1", [email]);
 
-    const user = userQuery.rows[0];
-    const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) {
-      return res.status(401).json({ error: "Invalid credentials" });
-    }
+        if (adminQuery.rows.length > 0) {
+            const admin = adminQuery.rows[0];
+            const passwordMatch = await bcrypt.compare(password, admin.password);
 
-    const token = generateToken(user);
-    res.json({
-      message: "Login successful",
-      token,
-      user: { id: user.id, username: user.username, email: user.email },
-    });
-  } catch (error) {
-    console.error("Login Error:", error.message);
-    res.status(500).json({ error: "Server error" });
-  }
+            if (!passwordMatch) {
+                return res.status(401).json({ message: "Invalid password" });
+            }
+
+            const token = jwt.sign({ email: admin.admin_email, role: "admin" }, "your_secret_key", { expiresIn: "1h" });
+            return res.json({ token, role: "admin" });
+        }
+
+        // Check normal users
+        const userQuery = await pool.query("SELECT * FROM users WHERE email = $1", [email]);
+
+        if (userQuery.rows.length === 0) {
+            return res.status(401).json({ message: "User not found" });
+        }
+
+        const user = userQuery.rows[0];
+        const passwordMatch = await bcrypt.compare(password, user.password);
+
+        if (!passwordMatch) {
+            return res.status(401).json({ message: "Invalid password" });
+        }
+
+        const token = jwt.sign({ email: user.email, role: "user" }, "Admin056#", { expiresIn: "1h" });
+        res.json({ token, role: "user" });
+
+    } catch (error) {
+        console.error("Login error:", error);
+        res.status(500).json({ message: "Server error" });
+    }
 });
 
 // ✅ ADMIN: Get All Users and Their Expenses
@@ -411,7 +423,7 @@ router.post("/admin/login", async (req, res) => {
       return res.status(401).json({ message: "Invalid email or password" });
     }
 
-    const token = jwt.sign({ email: admin.admin_email, role: "admin" }, "your_secret_key", { expiresIn: "1h" });
+    const token = jwt.sign({ email: admin.admin_email, role: "admin" }, "Admin056#", { expiresIn: "1h" });
 
     res.json({ token });
   } catch (err) {
