@@ -105,8 +105,6 @@ app.post("/register", async (req, res) => {
 });
 
 // 🔵 LOGIN USER
-const bcrypt = require("bcrypt");
-const jwt = require("jsonwebtoken");
 
 app.post("/login", async (req, res) => {
     const { email, password } = req.body;
