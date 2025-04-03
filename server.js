@@ -19,9 +19,10 @@ if (!process.env.DATABASE_URL) {
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: process.env.DATABASE_URL.includes("localhost") ? false : { rejectUnauthorized: false },
-  max: 10, // Max connections
-  idleTimeoutMillis: 30000, // Close idle connections after 30s
+  max: 20, // Increase max connections
+  idleTimeoutMillis: 20000, // Close idle connections sooner
 });
+
 
 
 // ✅ Middleware
@@ -53,12 +54,9 @@ app.use(express.json());
 
 // 🔑 JWT Token Generation
 const generateToken = (user) => {
-  return jwt.sign(
-    { userId: user.id, email: user.email, username: user.username },
-    process.env.JWT_SECRET,
-    { expiresIn: "1h" }
-  );
+  return jwt.sign({ userId: user.id }, process.env.JWT_SECRET, { expiresIn: "1h" });
 };
+
 
 // 🔐 Authentication Middleware
 const authenticateToken = (req, res, next) => {
@@ -92,7 +90,7 @@ app.post("/register", async (req, res) => {
       return res.status(400).json({ error: "User already exists" });
     }
 
-    const hashedPassword = await bcrypt.hash(password, 10);
+    const hashedPassword = await bcrypt.hash(password, 8); // Lower cost factor
     const newUser = await pool.query(
       "INSERT INTO users (username, email, password) VALUES ($1, $2, $3) RETURNING id, username, email",
       [username, email, hashedPassword]
@@ -114,7 +112,10 @@ app.post("/login", async (req, res) => {
       return res.status(400).json({ error: "Email and password are required" });
     }
 
-    const userQuery = await pool.query("SELECT * FROM users WHERE email = $1", [email]);
+    const userQuery = await pool.query(
+      "SELECT id, username, email, password FROM users WHERE email = $1",
+      [email]
+    );    
     if (userQuery.rows.length === 0) {
       return res.status(401).json({ error: "User not found" });
     }
@@ -361,8 +362,9 @@ app.get("/dashboard", authenticateToken, async (req, res) => {
 
 // ✅ Keep Server Warm (Prevent Cold Starts)
 setInterval(() => {
-  fetch(process.env.BACKEND_URL).catch(() => {}); // Adjust as needed
-}, 5 * 60 * 1000); // Every 5 minutes
+  fetch(`${process.env.BACKEND_URL}`).catch(() => {}); 
+}, 3 * 60 * 1000); // Every 3 minutes
+
 
 
 
