@@ -381,6 +381,18 @@ module.exports = router;
 
 
 
+const saltRounds = 10;
+const plainPassword = "Admin056#"; // Change this to your preferred admin password
+
+bcrypt.hash(plainPassword, saltRounds, (err, hash) => {
+  if (err) {
+    console.error("Error hashing password:", err);
+  } else {
+    console.log(`UPDATE admin_settings SET password = '${hash}' WHERE admin_email = 'expensaver.admin@gmail.com';`);
+  }
+});
+
+
 // ✅ Keep Server Warm (Prevent Cold Starts)
 setInterval(() => {
   fetch(`${process.env.BACKEND_URL}`).catch(() => {}); 
