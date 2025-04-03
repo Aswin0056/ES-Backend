@@ -114,13 +114,21 @@ app.post("/login", async (req, res) => {
 
     // Check if the user is an admin
     const adminQuery = await pool.query("SELECT * FROM admin_settings WHERE admin_email = $1", [email]);
+
     if (adminQuery.rows.length > 0) {
       const admin = adminQuery.rows[0];
+
+      if (!admin.password) {
+        return res.status(500).json({ error: "Admin password is missing. Please set a password in the database." });
+      }
+
       const isMatch = await bcrypt.compare(password, admin.password);
       if (!isMatch) {
         return res.status(401).json({ error: "Invalid credentials" });
       }
+
       const token = jwt.sign({ email: admin.admin_email, role: "admin" }, process.env.JWT_SECRET, { expiresIn: "1h" });
+
       return res.json({ message: "Admin login successful", token, user: { email: admin.admin_email, role: "admin" } });
     }
 
@@ -137,12 +145,14 @@ app.post("/login", async (req, res) => {
     }
 
     const token = jwt.sign({ userId: user.id, email: user.email, role: "user" }, process.env.JWT_SECRET, { expiresIn: "1h" });
+
     res.json({ message: "Login successful", token, user: { id: user.id, username: user.username, email: user.email, role: "user" } });
   } catch (error) {
     console.error("Login Error:", error.message);
-    res.status(500).json({ error: "Server error" });
+    res.status(500).json({ error: "Server error", details: error.message });
   }
 });
+
 
 
 // ✅ ADMIN: Get All Users and Their Expenses
@@ -388,16 +398,19 @@ module.exports = router;
 
 
 
-const saltRounds = 10;
-const plainPassword = "Admin056#"; // Change this to a strong password
 
-bcrypt.hash(plainPassword, saltRounds, async (err, hash) => {
+
+const saltRounds = 10;
+const plainPassword = "Admin056#"; // Use a secure password
+
+bcrypt.hash(plainPassword, saltRounds, (err, hash) => {
   if (err) {
     console.error("Error hashing password:", err);
   } else {
     console.log(`UPDATE admin_settings SET password = '${hash}' WHERE admin_email = 'expensaver.admin@gmail.com';`);
   }
 });
+
 
 
 
