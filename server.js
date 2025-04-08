@@ -405,6 +405,10 @@ bcrypt.hash(plainPassword, saltRounds, (err, hash) => {
 });
 
 
+app.get('/test', (req, res) => {
+  res.json({ ok: true });
+});
+
 
 
 
