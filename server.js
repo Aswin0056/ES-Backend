@@ -41,7 +41,17 @@ app.use(express.urlencoded({ extended: true })); // Parse URL-Encoded Data
 
 
 // ✅ CORS Configuration
-const allowedOrigins = [process.env.FRONTEND_URL, "http://localhost:3000", "https://expensaver.netlify.app"];
+const allowedOrigins = [
+  process.env.FRONTEND_URL,
+  "http://localhost:3000",                // Local browser frontend
+  "http://10.0.2.2:3000",                 // Android emulator accessing localhost
+  "https://expensaver.netlify.app",      // Deployed frontend
+  "http://10.0.2.2",                      // Emulator hitting backend directly
+  "http://localhost",                    // For fallback scenarios
+  "http://127.0.0.1",                    // Another localhost alias
+  "expensaver://*",                      // Custom scheme if you use deep linking
+  "file://*",                            // If the app uses a WebView or local HTML
+];
 
 app.use(
   cors({
