@@ -23,6 +23,13 @@ const pool = new Pool({
   idleTimeoutMillis: 20000, // Close idle connections sooner
 });
 
+// Middleware
+app.use(cors());
+app.use(express.json());
+app.get("/test", (req, res) => {
+  res.status(200).json({ message: "✅ Backend is working!" });
+});
+
 
 
 // ✅ Middleware
@@ -404,10 +411,6 @@ bcrypt.hash(plainPassword, saltRounds, (err, hash) => {
   }
 });
 
-
-app.get('/test', (req, res) => {
-  res.json({ ok: true });
-});
 
 
 
