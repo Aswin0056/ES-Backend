@@ -23,13 +23,6 @@ const pool = new Pool({
   idleTimeoutMillis: 20000, // Close idle connections sooner
 });
 
-// Middleware
-app.use(cors());
-app.use(express.json());
-app.get("/test", (req, res) => {
-  res.status(200).json({ message: "✅ Backend is working!" });
-});
-
 
 
 // ✅ Middleware
@@ -42,20 +35,16 @@ app.use(express.urlencoded({ extended: true })); // Parse URL-Encoded Data
 
 // ✅ CORS Configuration
 const allowedOrigins = [
-  process.env.FRONTEND_URL,
-  "http://localhost:3000",                // Local browser frontend
-  "http://10.0.2.2:3000",                 // Android emulator accessing localhost
-  "https://expensaver.netlify.app",      // Deployed frontend
-  "http://10.0.2.2",                      // Emulator hitting backend directly
-  "http://localhost",                    // For fallback scenarios
-  "http://127.0.0.1",                    // Another localhost alias
-  "expensaver://*",                      // Custom scheme if you use deep linking
-  "file://*",                            // If the app uses a WebView or local HTML
+  "http://localhost:3000",            // local React dev
+  "https://expensaver.netlify.app",   // deployed frontend
+  "capacitor://localhost",            // Android / iOS WebView
+  "http://localhost",                 // fallback WebView
 ];
 
 app.use(
   cors({
     origin: (origin, callback) => {
+      console.log("Origin:", origin);
       if (!origin || allowedOrigins.includes(origin)) {
         callback(null, true);
       } else {
@@ -66,6 +55,7 @@ app.use(
     allowedHeaders: ["Content-Type", "Authorization"],
   })
 );
+
 
 app.use(express.json());
 
@@ -422,6 +412,12 @@ bcrypt.hash(plainPassword, saltRounds, (err, hash) => {
 });
 
 
+
+// Backend ping route
+app.get("/api/ping", (req, res) => {
+  console.log("Ping request received"); // For debugging
+  res.json({ message: "pong" });
+});
 
 
 
