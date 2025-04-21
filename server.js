@@ -415,9 +415,9 @@ bcrypt.hash(plainPassword, saltRounds, (err, hash) => {
 
 // Backend ping route
 app.get("/api/ping", (req, res) => {
-  console.log("Ping request received"); // For debugging
   res.json({ message: "pong" });
 });
+
 
 
 
