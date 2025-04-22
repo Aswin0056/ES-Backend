@@ -27,10 +27,9 @@ app.use(express.json()); // Parse JSON Requests
 app.use(bodyParser.json()); // Parse JSON
 app.use(express.urlencoded({ extended: true })); // Parse URL-Encoded Data
 
-
-
-app.use(cors());
-
+const allowedOrigins = [
+  "https://expensaver.netlify.app/" // add your frontend domain here
+];
 
 app.use(
   cors({
