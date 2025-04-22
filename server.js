@@ -28,7 +28,9 @@ app.use(bodyParser.json()); // Parse JSON
 app.use(express.urlencoded({ extended: true })); // Parse URL-Encoded Data
 
 const allowedOrigins = [
-  "https://expensaver.netlify.app/" // add your frontend domain here
+  "https://expensaver.netlify.app/",
+  "http://localhost:3000",
+  "http://127.0.0.1:3000", // add your frontend domain here
 ];
 
 app.use(
