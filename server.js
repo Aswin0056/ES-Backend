@@ -18,9 +18,6 @@ if (!process.env.DATABASE_URL) {
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: process.env.DATABASE_URL.includes("localhost") ? false : { rejectUnauthorized: false },
-  max: 20, // Increase max connections
-  idleTimeoutMillis: 20000, // Close idle connections sooner
 });
 
 // ✅ Middleware
@@ -32,19 +29,8 @@ app.use(express.urlencoded({ extended: true })); // Parse URL-Encoded Data
 
 
 
-const allowedOrigins = process.env.CORS_ALLOWED_ORIGINS.split(',');
+app.use(cors());
 
-const corsOptions = {
-  origin: (origin, callback) => {
-    if (allowedOrigins.indexOf(origin) !== -1 || !origin) {
-      callback(null, true);
-    } else {
-      callback(new Error('Not allowed by CORS'));
-    }
-  },
-};
-
-app.use(cors(corsOptions)); // Apply the CORS middleware with the allowed origins
 
 app.use(
   cors({
