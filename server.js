@@ -23,8 +23,6 @@ const pool = new Pool({
   idleTimeoutMillis: 20000, // Close idle connections sooner
 });
 
-
-
 // ✅ Middleware
 app.use(compression()); // Enable Gzip Compression
 app.use(helmet()); // Security Headers
@@ -33,13 +31,20 @@ app.use(bodyParser.json()); // Parse JSON
 app.use(express.urlencoded({ extended: true })); // Parse URL-Encoded Data
 
 
-// ✅ CORS Configuration
-const allowedOrigins = [
-  "http://localhost:3000",            // local React dev
-  "https://expensaver.netlify.app",   // deployed frontend
-  "capacitor://localhost",            // Android / iOS WebView
-  "http://localhost",                 // fallback WebView
-];
+
+const allowedOrigins = process.env.CORS_ALLOWED_ORIGINS.split(',');
+
+const corsOptions = {
+  origin: (origin, callback) => {
+    if (allowedOrigins.indexOf(origin) !== -1 || !origin) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+};
+
+app.use(cors(corsOptions)); // Apply the CORS middleware with the allowed origins
 
 app.use(
   cors({
@@ -221,8 +226,6 @@ app.post("/expenses", authenticateToken, async (req, res) => {
   }
 });
 
-
-
 // 🔴 DELETE EXPENSE (Protected)
 app.put("/expenses/:id", authenticateToken, async (req, res) => {
   try {
@@ -294,8 +297,6 @@ app.delete("/delete-expense/:id", authenticateToken, async (req, res) => {
   }
 });
 
-
-
 // comments section
 app.use(cors());
 app.use(bodyParser.json());
@@ -305,9 +306,6 @@ const commentsRouter = require("./routes/comments");  // Ensure this path is cor
 app.use("/comments", commentsRouter);  // Make sure this matches the frontend request
 
 // comments section
-
-
-
 
 const multer = require("multer");
 const path = require("path");
@@ -347,14 +345,8 @@ app.post("/upload", upload.single("profileImage"), async (req, res) => {
     }
 });
 
-
-
 // Serve uploaded images statically
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
-
-
-
-
 
 app.get("/dashboard", authenticateToken, async (req, res) => {
   try {
@@ -378,8 +370,6 @@ app.get("/dashboard", authenticateToken, async (req, res) => {
   }
 });
 
-
-
 const router = express.Router();
 
 router.get("/admin-email", async (req, res) => {
@@ -398,8 +388,6 @@ router.get("/admin-email", async (req, res) => {
 
 module.exports = router;
 
-
-
 const saltRounds = 10;
 const plainPassword = "Admin056#"; // Change this to your preferred admin password
 
@@ -412,21 +400,16 @@ bcrypt.hash(plainPassword, saltRounds, (err, hash) => {
 });
 
 
-
 // Backend ping route
 app.get("/api/ping", (req, res) => {
   res.json({ message: "pong" });
 });
 
 
-
-
 // ✅ Keep Server Warm (Prevent Cold Starts)
 setInterval(() => {
   fetch(`${process.env.BACKEND_URL}`).catch(() => {}); 
 }, 3 * 60 * 1000); // Every 3 minutes
-
-
 
 
 
