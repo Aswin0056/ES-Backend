@@ -27,22 +27,10 @@ app.use(express.json()); // Parse JSON Requests
 app.use(bodyParser.json()); // Parse JSON
 app.use(express.urlencoded({ extended: true })); // Parse URL-Encoded Data
 
-const allowedOrigins = [
-  "https://expensaver.netlify.app/",
-  "http://localhost:3000",
-  "http://127.0.0.1:3000", // add your frontend domain here
-];
 
 app.use(
   cors({
-    origin: (origin, callback) => {
-      console.log("Origin:", origin);
-      if (!origin || allowedOrigins.includes(origin)) {
-        callback(null, true);
-      } else {
-        callback(new Error("CORS Policy: Not allowed"));
-      }
-    },
+    origin: "*", // Allow any domain
     methods: ["GET", "POST", "PUT", "DELETE"],
     allowedHeaders: ["Content-Type", "Authorization"],
   })
