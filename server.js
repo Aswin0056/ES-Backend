@@ -162,7 +162,15 @@ app.get("/admin/users-expenses", authenticateToken, async (req, res) => {
 // 🟡 ADD EXPENSE
 app.get("/expenses", authenticateToken, async (req, res) => {
   try {
-    const expenses = await pool.query("SELECT * FROM expenses WHERE user_id = $1", [req.user.userId]);
+    const { sheet } = req.query;
+
+    const query = sheet
+      ? "SELECT * FROM expenses WHERE user_id = $1 AND sheet = $2"
+      : "SELECT * FROM expenses WHERE user_id = $1";
+
+    const values = sheet ? [req.user.userId, sheet] : [req.user.userId];
+
+    const expenses = await pool.query(query, values);
     res.json(expenses.rows);
   } catch (error) {
     console.error("Fetch Expenses Error:", error.message);
@@ -170,28 +178,26 @@ app.get("/expenses", authenticateToken, async (req, res) => {
   }
 });
 
+
 // 🟡 ADD EXPENSE (Protected)
 app.post("/expenses", authenticateToken, async (req, res) => {
   try {
-    const { title, amount, quantity } = req.body;
+    const { title, amount, quantity, sheet } = req.body;
 
-    if (!title || !amount) {
-      return res.status(400).json({ error: "Title and amount are required" });
+    if (!title || !amount || !sheet) {
+      return res.status(400).json({ error: "Title, amount, and sheet are required" });
     }
 
-    // Find user by email
     const userQuery = await pool.query("SELECT id FROM users WHERE email = $1", [req.user.email]);
-
     if (userQuery.rows.length === 0) {
       return res.status(404).json({ error: "User not found" });
     }
 
     const userId = userQuery.rows[0].id;
 
-    // Insert expense into database
     const newExpense = await pool.query(
-      "INSERT INTO expenses (user_id, title, amount, quantity) VALUES ($1, $2, $3, $4) RETURNING *",
-      [userId, title, amount, quantity || 1]
+      "INSERT INTO expenses (user_id, title, amount, quantity, sheet) VALUES ($1, $2, $3, $4, $5) RETURNING *",
+      [userId, title, amount, quantity || 1, sheet]
     );
 
     res.status(201).json({ message: "Expense added successfully!", expense: newExpense.rows[0] });
@@ -201,15 +207,16 @@ app.post("/expenses", authenticateToken, async (req, res) => {
   }
 });
 
+
 // 🔴 DELETE EXPENSE (Protected)
 app.put("/expenses/:id", authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
-    const { title, amount, quantity } = req.body;
+    const { title, amount, quantity, sheet } = req.body;
 
     const updatedExpense = await pool.query(
-      "UPDATE expenses SET title = $1, amount = $2, quantity = $3 WHERE id = $4 AND user_id = $5 RETURNING *",
-      [title, amount, quantity, id, req.user.userId]
+      "UPDATE expenses SET title = $1, amount = $2, quantity = $3, sheet = $4 WHERE id = $5 AND user_id = $6 RETURNING *",
+      [title, amount, quantity, sheet, id, req.user.userId]
     );
 
     if (updatedExpense.rowCount === 0) {
@@ -222,6 +229,7 @@ app.put("/expenses/:id", authenticateToken, async (req, res) => {
     res.status(500).json({ error: "Server error" });
   }
 });
+
 
 // 🔹 Delete Expense
 app.delete("/expenses/:id", authenticateToken, async (req, res) => {
@@ -271,6 +279,22 @@ app.delete("/delete-expense/:id", authenticateToken, async (req, res) => {
     res.status(500).json({ error: "Server error" });
   }
 });
+
+
+app.get("/sheets", authenticateToken, async (req, res) => {
+  try {
+    const result = await pool.query(
+      "SELECT DISTINCT sheet FROM expenses WHERE user_id = $1",
+      [req.user.userId]
+    );
+    const sheets = result.rows.map(row => row.sheet);
+    res.json({ sheets });
+  } catch (error) {
+    console.error("Fetch Sheets Error:", error.message);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
 
 // comments section
 app.use(cors());
