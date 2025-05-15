@@ -492,7 +492,7 @@ app.put('/change-password', authenticateToken, async (req, res) => {
     const newHash = await bcrypt.hash(newPassword, 10);
     console.log('Hashed new password');
 
-    await client.query('UPDATE users SET password_hash = $1 WHERE id = $2', [newHash, userId]);
+    await client.query('UPDATE users SET password = $1 WHERE id = $2', [newHash, userId]);
     client.release();
 
     res.json({ message: 'Password changed successfully' });
