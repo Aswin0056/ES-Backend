@@ -365,6 +365,102 @@ app.post("/upload", upload.single("profileImage"), async (req, res) => {
     }
 });
 
+// DELETE all expenses for the logged-in user
+app.delete('/api/settings/expenses', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+
+    // Delete all expenses for user
+    const result = await pool.query(
+      'DELETE FROM expenses WHERE user_id = $1',
+      [userId]
+    );
+
+    res.json({ message: `All expenses deleted for user ${userId}` });
+  } catch (error) {
+    console.error('Delete All Expenses Error:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// DELETE all sheets for the logged-in user
+app.delete('/api/settings/sheets', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+
+    // Assuming sheets are identified by the distinct 'sheet' value in expenses
+    // Delete all expenses (and so sheets) for user
+    await pool.query(
+      'DELETE FROM expenses WHERE user_id = $1',
+      [userId]
+    );
+
+    res.json({ message: `All sheets deleted for user ${userId}` });
+  } catch (error) {
+    console.error('Delete All Sheets Error:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// DELETE a specific sheet (by sheet name or id) for the logged-in user
+app.delete('/api/settings/sheets/:sheetName', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const { sheetName } = req.params;
+
+    // Delete expenses belonging to the specific sheet
+    const result = await pool.query(
+      'DELETE FROM expenses WHERE user_id = $1 AND sheet = $2 RETURNING *',
+      [userId, sheetName]
+    );
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: 'Sheet not found or unauthorized' });
+    }
+
+    res.json({ message: `Sheet '${sheetName}' deleted successfully` });
+  } catch (error) {
+    console.error('Delete Specific Sheet Error:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// POST to update auto-delete setting for user
+app.post('/api/settings/auto-delete', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const { setting } = req.body; // e.g., '12h', '30d', 'off'
+
+    // Upsert user's auto-delete setting in a table, e.g. user_settings
+    // Let's assume you have a table user_settings(user_id PK, auto_delete_setting TEXT)
+
+    // First, check if a setting row exists
+    const existing = await pool.query(
+      'SELECT * FROM user_settings WHERE user_id = $1',
+      [userId]
+    );
+
+    if (existing.rowCount === 0) {
+      // Insert new
+      await pool.query(
+        'INSERT INTO user_settings (user_id, auto_delete_setting) VALUES ($1, $2)',
+        [userId, setting]
+      );
+    } else {
+      // Update existing
+      await pool.query(
+        'UPDATE user_settings SET auto_delete_setting = $1 WHERE user_id = $2',
+        [setting, userId]
+      );
+    }
+
+    res.json({ message: 'Auto-delete setting updated successfully' });
+  } catch (error) {
+    console.error('Update Auto-Delete Setting Error:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 // Serve uploaded images statically
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
