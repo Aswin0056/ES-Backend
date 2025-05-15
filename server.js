@@ -461,6 +461,48 @@ app.post('/api/settings/auto-delete', authenticateToken, async (req, res) => {
   }
 });
 
+app.put('/change-password', authenticateToken, async (req, res) => {
+  const userId = req.user.id;
+  const { oldPassword, newPassword } = req.body;
+
+  if (!oldPassword || !newPassword) {
+    return res.status(400).json({ message: 'Old and new passwords are required' });
+  }
+
+  try {
+    const client = await pool.connect();
+
+    // Fetch user password hash
+    const result = await client.query('SELECT password_hash FROM users WHERE id = $1', [userId]);
+    if (result.rows.length === 0) {
+      client.release();
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    const passwordHash = result.rows[0].password_hash;
+
+    // Check if oldPassword matches hash
+    const match = await bcrypt.compare(oldPassword, passwordHash);
+    if (!match) {
+      client.release();
+      return res.status(401).json({ message: 'Current password is incorrect' });
+    }
+
+    // Hash new password
+    const newHash = await bcrypt.hash(newPassword, 10);
+
+    // Update password hash in DB
+    await client.query('UPDATE users SET password_hash = $1 WHERE id = $2', [newHash, userId]);
+
+    client.release();
+
+    res.json({ message: 'Password changed successfully' });
+  } catch (error) {
+    console.error('Change password error:', error);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+});
+
 // Serve uploaded images statically
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
