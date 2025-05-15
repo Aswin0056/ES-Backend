@@ -295,6 +295,27 @@ app.get("/sheets", authenticateToken, async (req, res) => {
   }
 });
 
+app.post("/sheets", authenticateToken, async (req, res) => {
+  const { sheetName } = req.body;
+
+  if (!sheetName) {
+    return res.status(400).json({ error: "Sheet name is required" });
+  }
+
+  try {
+    // Insert a dummy row in expenses with 0 amount just to register a new sheet
+    await pool.query(
+      "INSERT INTO expenses (user_id, title, amount, quantity, sheet) VALUES ($1, $2, $3, $4, $5)",
+      [req.user.userId, 'Sheet Created', 0, 1, sheetName]
+    );
+
+    res.status(201).json({ sheetName });
+  } catch (error) {
+    console.error("Create Sheet Error:", error.message);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
 
 // comments section
 app.use(cors());
