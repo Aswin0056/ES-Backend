@@ -474,7 +474,7 @@ app.put('/change-password', authenticateToken, async (req, res) => {
   try {
     const client = await pool.connect();
 
-    const result = await client.query('SELECT password_hash FROM users WHERE id = $1', [userId]);
+    const result = await client.query('SELECT password FROM users WHERE id = $1', [userId]);
     if (result.rows.length === 0) {
       client.release();
       return res.status(404).json({ message: 'User not found' });
