@@ -67,74 +67,95 @@ const authenticateToken = (req, res, next) => {
 // 🟢 REGISTER USER
 app.post("/register", async (req, res) => {
   try {
-    const { username, email, password } = req.body;
-    if (!username || !email || !password) {
-      return res.status(400).json({ error: "Username, email, and password are required" });
+    const { username, email, phone, password } = req.body;
+
+    if (!username || !password || (!email && !phone)) {
+      return res.status(400).json({ error: "Username, password, and either email or phone are required." });
     }
 
-    const userExists = await pool.query("SELECT * FROM users WHERE email = $1", [email]);
-    if (userExists.rows.length > 0) {
-      return res.status(400).json({ error: "User already exists" });
+    const existingUser = email
+      ? await pool.query("SELECT * FROM users WHERE email = $1", [email])
+      : await pool.query("SELECT * FROM users WHERE phone = $1", [phone]);
+
+    if (existingUser.rows.length > 0) {
+      return res.status(400).json({ error: "User already exists." });
     }
 
-    const hashedPassword = await bcrypt.hash(password, 8); // Lower cost factor
+    const hashedPassword = await bcrypt.hash(password, 8);
+
     const newUser = await pool.query(
-      "INSERT INTO users (username, email, password) VALUES ($1, $2, $3) RETURNING id, username, email",
-      [username, email, hashedPassword]
+      "INSERT INTO users (username, email, phone, password) VALUES ($1, $2, $3, $4) RETURNING id, username, email, phone",
+      [username, email || null, phone || null, hashedPassword]
     );
 
     const token = generateToken(newUser.rows[0]);
     res.status(201).json({ message: "Registration successful!", token, user: newUser.rows[0] });
+
   } catch (error) {
     console.error("Register Error:", error.message);
     res.status(500).json({ error: "Server error" });
   }
 });
 
+
 // 🔵 LOGIN USER
 app.post("/login", async (req, res) => {
   try {
-    const { email, password } = req.body;
-    if (!email || !password) {
-      return res.status(400).json({ error: "Email and password are required" });
+    const { email, phone, password } = req.body;
+
+    if ((!email && !phone) || !password) {
+      return res.status(400).json({ error: "Email or phone and password are required." });
     }
 
-    // Check if the user is an admin
-    const adminQuery = await pool.query("SELECT * FROM admin_settings WHERE admin_email = $1", [email]);
-    if (adminQuery.rows.length > 0) {
-      const admin = adminQuery.rows[0];
-      const isMatch = await bcrypt.compare(password, admin.password);
-      if (!isMatch) {
-        return res.status(401).json({ error: "Invalid credentials" });
+    let user;
+    if (email) {
+      // Check if admin
+      const admin = await pool.query("SELECT * FROM admin_settings WHERE admin_email = $1", [email]);
+      if (admin.rows.length > 0) {
+        const isAdminMatch = await bcrypt.compare(password, admin.rows[0].password);
+        if (!isAdminMatch) {
+          return res.status(401).json({ error: "Invalid credentials" });
+        }
+        const token = jwt.sign({ email: admin.rows[0].admin_email, role: "admin" }, process.env.JWT_SECRET, { expiresIn: "1h" });
+        return res.json({ message: "Admin login successful", token, user: { email: admin.rows[0].admin_email, role: "admin" } });
       }
-      const token = jwt.sign({ email: admin.admin_email, role: "admin" }, process.env.JWT_SECRET, { expiresIn: "1h" });
-      return res.json({ message: "Admin login successful", token, user: { email: admin.admin_email, role: "admin" } });
+
+      // Regular user login by email
+      const query = await pool.query("SELECT * FROM users WHERE email = $1", [email]);
+      if (query.rows.length === 0) {
+        return res.status(401).json({ error: "User not found" });
+      }
+      user = query.rows[0];
+
+    } else {
+      // Regular user login by phone
+      const query = await pool.query("SELECT * FROM users WHERE phone = $1", [phone]);
+      if (query.rows.length === 0) {
+        return res.status(401).json({ error: "User not found" });
+      }
+      user = query.rows[0];
     }
 
-    // If not an admin, check the users table
-    const userQuery = await pool.query("SELECT id, username, email, password FROM users WHERE email = $1", [email]);
-    if (userQuery.rows.length === 0) {
-      return res.status(401).json({ error: "User not found" });
-    }
-
-    const user = userQuery.rows[0];
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
       return res.status(401).json({ error: "Invalid credentials" });
     }
 
     const token = jwt.sign(
-  { userId: user.id, email: user.email, username: user.username, role: "user" },
-  process.env.JWT_SECRET,
-  { expiresIn: "1h" }
-);
+      { userId: user.id, email: user.email, phone: user.phone, username: user.username, role: "user" },
+      process.env.JWT_SECRET,
+      { expiresIn: "1h" }
+    );
 
-    res.json({ message: "Login successful", token, user: { id: user.id, username: user.username, email: user.email, role: "user" } });
+    res.json({ message: "Login successful", token, user: { id: user.id, username: user.username, email: user.email, phone: user.phone } });
+
   } catch (error) {
     console.error("Login Error:", error.message);
     res.status(500).json({ error: "Server error" });
   }
 });
+
+
 
 
 // ✅ ADMIN: Get All Users and Their Expenses
