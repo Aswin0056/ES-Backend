@@ -626,6 +626,16 @@ bcrypt.hash(plainPassword, saltRounds, (err, hash) => {
 });
 
 
+app.get("/", (req, res) => {
+  res.send("Azh Studio Backend is alive! 🚀");
+});
+
+router.get("/", (req, res) => {
+  res.send("Azh Studio API is running! ✅");
+});
+
+
+
 // Backend ping route
 app.get("/api/ping", (req, res) => {
   res.json({ message: "pong" });
