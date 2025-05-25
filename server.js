@@ -39,13 +39,14 @@ app.use(
 
 app.use(express.json());
 
-// 🔑 JWT Token Generation
+// Token creation:
 const generateToken = (user) => {
   return jwt.sign({ userId: user.id }, process.env.JWT_SECRET, { expiresIn: "1h" });
 };
 
 
-// 🔐 Authentication Middleware
+
+// Authentication middleware:
 const authenticateToken = (req, res, next) => {
   const authHeader = req.header("Authorization");
   if (!authHeader) return res.status(401).json({ error: "Access denied, token missing" });
@@ -55,7 +56,7 @@ const authenticateToken = (req, res, next) => {
 
   try {
     const verified = jwt.verify(token, process.env.JWT_SECRET);
-    req.user = verified;
+    req.user = verified;  // <-- req.user = { userId: 13, iat: ..., exp: ... }
     console.log("✅ Authenticated User:", verified);
     next();
   } catch (error) {
@@ -63,6 +64,7 @@ const authenticateToken = (req, res, next) => {
     res.status(403).json({ error: "Invalid or expired token" });
   }
 };
+
 
 // 🟢 REGISTER USER
 app.post("/register", async (req, res) => {
@@ -486,50 +488,30 @@ app.post('/api/settings/auto-delete', authenticateToken, async (req, res) => {
 
 
 app.put('/change-password', authenticateToken, async (req, res) => {
-  const userId = req.user?.id;
+  const userId = req.user.userId;
+  if (!userId) return res.status(401).json({ message: "Unauthorized: User ID missing from token" });
+
   const { oldPassword, newPassword } = req.body;
 
-  console.log('Change password request:', { userId, oldPassword, newPassword });
-
-  if (!userId) {
-    return res.status(401).json({ message: 'Unauthorized: User ID missing from token' });
-  }
-  if (!oldPassword || !newPassword) {
-    return res.status(400).json({ message: 'Old and new passwords are required' });
-  }
-
   try {
-    const client = await pool.connect();
+    // Fetch user from DB
+    const userResult = await pool.query('SELECT password FROM users WHERE id = $1', [userId]);
+    if (userResult.rowCount === 0) return res.status(404).json({ message: 'User not found' });
 
-    const result = await client.query('SELECT password FROM users WHERE id = $1', [userId]);
-    if (result.rows.length === 0) {
-      client.release();
-      return res.status(404).json({ message: 'User not found' });
-    }
+    const user = userResult.rows[0];
+    const validPassword = await bcrypt.compare(oldPassword, user.password);
+    if (!validPassword) return res.status(400).json({ message: 'Old password incorrect' });
 
-    const passwordHash = result.rows[0].password;
-    console.log('Stored password hash:', passwordHash);
-
-    const match = await bcrypt.compare(oldPassword, passwordHash);
-    console.log('Password match result:', match);
-
-    if (!match) {
-      client.release();
-      return res.status(401).json({ message: 'Current password is incorrect' });
-    }
-
-    const newHash = await bcrypt.hash(newPassword, 10);
-    console.log('New password hashed');
-
-    await client.query('UPDATE users SET password = $1 WHERE id = $2', [newHash, userId]);
-    client.release();
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    await pool.query('UPDATE users SET password = $1 WHERE id = $2', [hashedPassword, userId]);
 
     res.json({ message: 'Password changed successfully' });
   } catch (error) {
-    console.error('Change password error:', error);
-    res.status(500).json({ message: error.message || 'Internal server error' });
+    console.error('Password change error:', error);
+    res.status(500).json({ message: 'Server error' });
   }
 });
+
 
 
 
