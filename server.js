@@ -512,7 +512,7 @@ app.put('/change-password', authenticateToken, async (req, res) => {
   }
 });
 
-
+// delete account
 
 app.delete('/delete-account', authenticateToken, async (req, res) => {
   const userId = req.user.userId; // Corrected property name from token
