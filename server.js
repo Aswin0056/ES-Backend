@@ -514,10 +514,8 @@ app.put('/change-password', authenticateToken, async (req, res) => {
 
 
 
-
-// DELETE /delete-account
 app.delete('/delete-account', authenticateToken, async (req, res) => {
-  const userId = req.user.id; // From verified token
+  const userId = req.user.userId; // Corrected property name from token
   const { password } = req.body;
 
   if (!password) {
@@ -525,24 +523,19 @@ app.delete('/delete-account', authenticateToken, async (req, res) => {
   }
 
   try {
-    // Fetch user from DB by id
     const result = await pool.query('SELECT password FROM users WHERE id = $1', [userId]);
     if (result.rows.length === 0) {
       return res.status(404).json({ message: 'User not found' });
     }
 
-    const passwordHash = result.rows[0].password_hash;
+    const passwordHash = result.rows[0].password; // Adjust column name if needed
 
-    // Compare password with bcrypt
     const isMatch = await bcrypt.compare(password, passwordHash);
     if (!isMatch) {
       return res.status(401).json({ message: 'Incorrect password' });
     }
 
-    // Delete user from DB
     await pool.query('DELETE FROM users WHERE id = $1', [userId]);
-
-    // Optionally: clean up related data (expenses, etc.) in other tables here
 
     res.json({ message: 'Account successfully deleted' });
   } catch (error) {
@@ -550,6 +543,7 @@ app.delete('/delete-account', authenticateToken, async (req, res) => {
     res.status(500).json({ message: 'Internal server error' });
   }
 });
+
 
 
 
