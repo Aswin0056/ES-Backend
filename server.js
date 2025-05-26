@@ -610,7 +610,7 @@ router.get("/", (req, res) => {
   res.send("Azh Studio API is running! ✅");
 });
 
-app.get('/backup', createBackup);
+app.get('/api/backup', createBackup);
 
 // Backend ping route
 app.get("/api/ping", (req, res) => {
