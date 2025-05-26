@@ -8,9 +8,9 @@ const bodyParser = require("body-parser");
 const compression = require("compression");
 const helmet = require("helmet");
 const app = express();
-const createBackup = require('./backup');
 const PORT = process.env.PORT || 5000;
 const router = express.Router();
+const { createBackup } = require('./database'); // adjust path if needed
 
 // ✅ PostgreSQL Connection
 if (!process.env.DATABASE_URL) {
@@ -610,7 +610,7 @@ router.get("/", (req, res) => {
   res.send("Azh Studio API is running! ✅");
 });
 
-router.get('/api/backup', createBackup)
+app.get('/backup', createBackup);
 
 // Backend ping route
 app.get("/api/ping", (req, res) => {
