@@ -8,7 +8,9 @@ const bodyParser = require("body-parser");
 const compression = require("compression");
 const helmet = require("helmet");
 const app = express();
+const createBackup = require('./backup');
 const PORT = process.env.PORT || 5000;
+const router = express.Router();
 
 // ✅ PostgreSQL Connection
 if (!process.env.DATABASE_URL) {
@@ -572,8 +574,6 @@ app.get("/dashboard", authenticateToken, async (req, res) => {
   }
 });
 
-const router = express.Router();
-
 router.get("/admin-email", async (req, res) => {
     try {
         const result = await pool.query("SELECT admin_email FROM admin_settings LIMIT 1");
@@ -610,7 +610,7 @@ router.get("/", (req, res) => {
   res.send("Azh Studio API is running! ✅");
 });
 
-
+router.get('/api/backup', createBackup)
 
 // Backend ping route
 app.get("/api/ping", (req, res) => {
