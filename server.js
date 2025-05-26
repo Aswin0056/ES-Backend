@@ -68,6 +68,37 @@ const authenticateToken = (req, res, next) => {
 };
 
 
+app.post('/export', async (req, res) => {
+  const {
+    fileFormat, includeHeaders, selectedSheets,
+    dateFormat, includeFormulas, passwordProtect, password
+  } = req.body;
+
+  // Generate a workbook using exceljs or similar
+  const workbook = new ExcelJS.Workbook();
+  const worksheet = workbook.addWorksheet('Export');
+
+  // Fill worksheet here based on options...
+
+  res.setHeader(
+    'Content-Disposition',
+    `attachment; filename=export.${fileFormat}`
+  );
+  res.setHeader(
+    'Content-Type',
+    fileFormat === 'csv' ? 'text/csv' : 
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+  );
+
+  if (fileFormat === 'csv') {
+    await workbook.csv.write(res);
+  } else {
+    await workbook.xlsx.write(res);
+  }
+});
+
+
+
 // 🟢 REGISTER USER
 app.post("/register", async (req, res) => {
   try {
