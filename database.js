@@ -2,9 +2,14 @@ const { exec } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 
-const backupDir = path.resolve(__dirname, '../backup'); // make sure this folder exists
+const backupDir = path.resolve(__dirname, './backups');
 
 const createBackup = (req, res) => {
+  // Ensure backup directory exists
+  if (!fs.existsSync(backupDir)) {
+    fs.mkdirSync(backupDir, { recursive: true });
+  }
+
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
   const fileName = `neondb_backup_${timestamp}.dump`;
   const filePath = path.join(backupDir, fileName);
@@ -20,7 +25,7 @@ const createBackup = (req, res) => {
     res.download(filePath, fileName, (err) => {
       if (err) console.error('Error sending file:', err);
 
-      // Optional: delete backup file after sending
+      // Delete backup file after sending
       fs.unlink(filePath, (unlinkErr) => {
         if (unlinkErr) console.error('Error deleting file:', unlinkErr);
       });
