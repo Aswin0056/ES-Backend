@@ -101,6 +101,23 @@ app.post('/export', async (req, res) => {
 });
 
 
+let bannerText = "powered by Azh Studio"; // Default banner text
+
+// GET /banner-text - returns current banner text
+app.get('/banner-text', (req, res) => {
+  res.json({ text: bannerText });
+});
+
+// POST /banner-text - update banner text (you can add auth here)
+app.post('/banner-text', (req, res) => {
+  const { text } = req.body;
+  if (!text || typeof text !== 'string') {
+    return res.status(400).json({ error: 'Invalid banner text' });
+  }
+  bannerText = text;
+  res.json({ message: 'Banner text updated', text: bannerText });
+});
+
 
 // 🟢 REGISTER USER
 app.post("/register", async (req, res) => {
