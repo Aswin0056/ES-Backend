@@ -49,8 +49,8 @@ app.use(express.json());
 const generateToken = (user) => {
   return jwt.sign(
     { userId: user.id },
-    process.env.JWT_SECRET
-    // No expiresIn
+    process.env.JWT_SECRET,
+    { expiresIn: "30d" }
   );
 };
 
