@@ -47,8 +47,13 @@ app.use(express.json());
 // };
 
 const generateToken = (user) => {
-  return jwt.sign({ userId: user.id }, process.env.JWT_SECRET); // no expiration
+  return jwt.sign(
+    { userId: user.id },
+    process.env.JWT_SECRET,
+    { expiresIn: '80y' } // 100 years (approx)
+  );
 };
+
 
 
 // Authentication middleware:
@@ -101,7 +106,7 @@ app.post('/export', async (req, res) => {
 });
 
 
-let bannerText = "powered by Azh Studio"; // Default banner text
+let bannerText = " Welcome to ExpenSaver if you got any updates you can see in this banner "; // Default banner text
 
 // GET /banner-text - returns current banner text
 app.get('/banner-text', (req, res) => {
