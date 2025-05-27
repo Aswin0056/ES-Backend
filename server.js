@@ -58,7 +58,7 @@ const generateToken = (user) => {
 
 
 // Authentication middleware:
-const authenticateToken = (req, res, next) => {
+const authenticateToken = async (req, res, next) => {
   const authHeader = req.header("Authorization");
   if (!authHeader) return res.status(401).json({ error: "Access denied, token missing" });
 
@@ -67,7 +67,17 @@ const authenticateToken = (req, res, next) => {
 
   try {
     const verified = jwt.verify(token, process.env.JWT_SECRET);
-    req.user = verified;  // <-- req.user = { userId: 13, iat: ..., exp: ... }
+    req.user = verified;
+
+    // 🔒 Verify token matches stored token in DB (only for regular users)
+    if (verified.userId) {
+      const result = await pool.query("SELECT token FROM users WHERE id = $1", [verified.userId]);
+
+      if (result.rows.length === 0 || result.rows[0].token !== token) {
+        return res.status(403).json({ error: "Token mismatch. Please log in again." });
+      }
+    }
+
     console.log("✅ Authenticated User:", verified);
     next();
   } catch (error) {
@@ -75,6 +85,7 @@ const authenticateToken = (req, res, next) => {
     res.status(403).json({ error: "Invalid or expired token" });
   }
 };
+
 
 
 app.post('/export', async (req, res) => {
@@ -157,6 +168,10 @@ app.post("/register", async (req, res) => {
     res.status(500).json({ error: "Server error" });
   }
 });
+
+
+
+
 
 // 🔵 LOGIN USER
 app.post("/login", async (req, res) => {
