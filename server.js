@@ -158,7 +158,6 @@ app.post("/register", async (req, res) => {
   }
 });
 
-
 // 🔵 LOGIN USER
 app.post("/login", async (req, res) => {
   try {
@@ -169,8 +168,9 @@ app.post("/login", async (req, res) => {
     }
 
     let user;
+
     if (email) {
-      // Check if admin
+      // Admin login check
       const admin = await pool.query("SELECT * FROM admin_settings WHERE admin_email = $1", [email]);
       if (admin.rows.length > 0) {
         const isAdminMatch = await bcrypt.compare(password, admin.rows[0].password);
@@ -178,7 +178,12 @@ app.post("/login", async (req, res) => {
           return res.status(401).json({ error: "Invalid credentials" });
         }
         const token = jwt.sign({ email: admin.rows[0].admin_email, role: "admin" }, process.env.JWT_SECRET, { expiresIn: "1h" });
-        return res.json({ message: "Admin login successful", token, user: { email: admin.rows[0].admin_email, role: "admin" } });
+
+        return res.json({
+          message: "Admin login successful",
+          token,
+          user: { email: admin.rows[0].admin_email, role: "admin" }
+        });
       }
 
       // Regular user login by email
@@ -197,24 +202,39 @@ app.post("/login", async (req, res) => {
       user = query.rows[0];
     }
 
+    // Password validation
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
       return res.status(401).json({ error: "Invalid credentials" });
     }
 
+    // Generate token
     const token = jwt.sign(
       { userId: user.id, email: user.email, phone: user.phone, username: user.username, role: "user" },
       process.env.JWT_SECRET,
       { expiresIn: "1h" }
     );
 
-    res.json({ message: "Login successful", token, user: { id: user.id, username: user.username, email: user.email, phone: user.phone } });
+    // ✅ Store the token in the users table (fixes your /expenses issue)
+    await pool.query("UPDATE users SET token = $1 WHERE id = $2", [token, user.id]);
+
+    res.json({
+      message: "Login successful",
+      token,
+      user: {
+        id: user.id,
+        username: user.username,
+        email: user.email,
+        phone: user.phone
+      }
+    });
 
   } catch (error) {
     console.error("Login Error:", error.message);
     res.status(500).json({ error: "Server error" });
   }
 });
+
 
 
 
