@@ -58,7 +58,7 @@ const generateToken = (user) => {
 
 
 // Authentication middleware:
-const authenticateToken = async (req, res, next) => {
+const authenticateToken = (req, res, next) => {
   const authHeader = req.header("Authorization");
   if (!authHeader) return res.status(401).json({ error: "Access denied, token missing" });
 
@@ -66,22 +66,15 @@ const authenticateToken = async (req, res, next) => {
   if (!token) return res.status(401).json({ error: "Invalid token format" });
 
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET); // No expiration check needed
-    const { rows } = await db.query("SELECT id FROM users WHERE id = $1 AND token = $2", [decoded.userId, token]);
-
-    if (rows.length === 0) {
-      return res.status(403).json({ error: "Token not valid anymore" });
-    }
-
-    req.user = decoded;
-    console.log("✅ Authenticated User:", decoded);
+    const verified = jwt.verify(token, process.env.JWT_SECRET);
+    req.user = verified;  // <-- req.user = { userId: 13, iat: ..., exp: ... }
+    console.log("✅ Authenticated User:", verified);
     next();
   } catch (error) {
     console.error("❌ Invalid Token:", error.message);
-    res.status(403).json({ error: "Invalid token" });
+    res.status(403).json({ error: "Invalid or expired token" });
   }
 };
-
 
 
 app.post('/export', async (req, res) => {
