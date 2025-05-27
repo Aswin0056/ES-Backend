@@ -41,11 +41,14 @@ app.use(
 
 app.use(express.json());
 
-// Token creation:
-const generateToken = (user) => {
-  return jwt.sign({ userId: user.id }, process.env.JWT_SECRET, { expiresIn: "1h" });
-};
+// // Token creation:
+// const generateToken = (user) => {
+//   return jwt.sign({ userId: user.id }, process.env.JWT_SECRET, { expiresIn: "1h" });
+// };
 
+const generateToken = (user) => {
+  return jwt.sign({ userId: user.id }, process.env.JWT_SECRET); // no expiration
+};
 
 
 // Authentication middleware:
