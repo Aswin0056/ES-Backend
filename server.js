@@ -11,6 +11,7 @@ const app = express();
 const PORT = process.env.PORT || 5000;
 const router = express.Router();
 const { createBackup } = require('./database'); // adjust path if needed
+const ExcelJS = require('exceljs');
 
 // ✅ PostgreSQL Connection
 if (!process.env.DATABASE_URL) {
@@ -221,33 +222,44 @@ app.post('/login', async (req, res) => {
 
 
 app.post('/export', async (req, res) => {
-  const {
-    fileFormat, includeHeaders, selectedSheets,
-    dateFormat, includeFormulas, passwordProtect, password
-  } = req.body;
+  try {
+    const {
+      fileFormat, includeHeaders, selectedSheets,
+      dateFormat, includeFormulas, passwordProtect, password
+    } = req.body;
 
-  // Generate a workbook using exceljs or similar
-  const workbook = new ExcelJS.Workbook();
-  const worksheet = workbook.addWorksheet('Export');
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet('Export');
 
-  // Fill worksheet here based on options...
+    // Sample data for testing
+    if (includeHeaders) {
+      worksheet.addRow(['Name', 'Amount', 'Date']);
+    }
 
-  res.setHeader(
-    'Content-Disposition',
-    `attachment; filename=export.${fileFormat}`
-  );
-  res.setHeader(
-    'Content-Type',
-    fileFormat === 'csv' ? 'text/csv' : 
-    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-  );
+    worksheet.addRow(['Sample', 100, new Date().toISOString()]);
 
-  if (fileFormat === 'csv') {
-    await workbook.csv.write(res);
-  } else {
-    await workbook.xlsx.write(res);
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename=export.${fileFormat}`
+    );
+    res.setHeader(
+      'Content-Type',
+      fileFormat === 'csv'
+        ? 'text/csv'
+        : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    );
+
+    if (fileFormat === 'csv') {
+      await workbook.csv.write(res);
+    } else {
+      await workbook.xlsx.write(res);
+    }
+  } catch (err) {
+    console.error('Export error:', err);
+    res.status(500).json({ message: 'Export failed' });
   }
 });
+
 
 
 let bannerText = " Welcome to ExpenSaver if you got any updates you can see in this banner "; // Default banner text
