@@ -46,13 +46,18 @@ app.use(express.json());
 //   return jwt.sign({ userId: user.id }, process.env.JWT_SECRET, { expiresIn: "1h" });
 // };
 
-const generateToken = (user) => {
-  return jwt.sign(
-    { userId: user.id },
-    process.env.JWT_SECRET,
-    { expiresIn: "30d" }
-  );
-};
+// const generateToken = (user) => {
+//   return jwt.sign(
+//     { userId: user.id },
+//     process.env.JWT_SECRET,
+//     { expiresIn: "30d" }
+//   );
+// };
+
+
+// app.get("/api/verify-token", authenticateToken, (req, res) => {
+//   res.json({ success: true, userId: req.user.userId });
+// });
 
 
 
@@ -86,6 +91,114 @@ const authenticateToken = async (req, res, next) => {
   }
 };
 
+
+
+let refreshTokens = [];
+
+// Generate Access Token (expires in 1h)
+const generateAccessToken = (user) => {
+  return jwt.sign(
+    { userId: user.id, email: user.email, phone: user.phone, username: user.username, role: "user" },
+    process.env.JWT_SECRET,
+    { expiresIn: '1h' }
+  );
+};
+
+// Generate Refresh Token (longer expiry)
+const generateRefreshToken = (user) => {
+  return jwt.sign(
+    { userId: user.id },
+    process.env.JWT_REFRESH_SECRET,  // Use separate secret for refresh tokens
+    { expiresIn: '7d' }
+  );
+};
+
+app.post('/refresh', (req, res) => {
+  const { refreshToken } = req.body;
+
+  if (!refreshToken) return res.status(401).json({ error: "Refresh token required" });
+  if (!refreshTokens.includes(refreshToken)) return res.status(403).json({ error: "Invalid refresh token" });
+
+  jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET, async (err, user) => {
+    if (err) return res.status(403).json({ error: "Invalid refresh token" });
+
+    // Generate new tokens
+    const dbUser = await pool.query("SELECT * FROM users WHERE id = $1", [user.userId]);
+    if (dbUser.rows.length === 0) return res.status(401).json({ error: "User not found" });
+
+    const newAccessToken = generateAccessToken(dbUser.rows[0]);
+    const newRefreshToken = generateRefreshToken(dbUser.rows[0]);
+
+    // Replace old refresh token with new one
+    refreshTokens = refreshTokens.filter(token => token !== refreshToken);
+    refreshTokens.push(newRefreshToken);
+
+    // Update stored access token in DB
+    await pool.query("UPDATE users SET token = $1 WHERE id = $2", [newAccessToken, user.userId]);
+
+    res.json({
+      token: newAccessToken,
+      refreshToken: newRefreshToken,
+    });
+  });
+});
+
+
+app.post('/login', async (req, res) => {
+  try {
+    const { email, phone, password } = req.body;
+
+    if ((!email && !phone) || !password) {
+      return res.status(400).json({ error: "Email or phone and password are required." });
+    }
+
+    let user;
+
+    if (email) {
+      const query = await pool.query("SELECT * FROM users WHERE email = $1", [email]);
+      if (query.rows.length === 0) {
+        return res.status(401).json({ error: "User not found" });
+      }
+      user = query.rows[0];
+    } else {
+      const query = await pool.query("SELECT * FROM users WHERE phone = $1", [phone]);
+      if (query.rows.length === 0) {
+        return res.status(401).json({ error: "User not found" });
+      }
+      user = query.rows[0];
+    }
+
+    const isMatch = await bcrypt.compare(password, user.password);
+    if (!isMatch) {
+      return res.status(401).json({ error: "Invalid credentials" });
+    }
+
+    const accessToken = generateAccessToken(user);
+    const refreshToken = generateRefreshToken(user);
+
+    // Store access token in DB (optional, for token matching)
+    await pool.query("UPDATE users SET token = $1 WHERE id = $2", [accessToken, user.id]);
+
+    // Store refresh token in memory or DB
+    refreshTokens.push(refreshToken);
+
+    res.json({
+      message: "Login successful",
+      token: accessToken,
+      refreshToken,
+      user: {
+        id: user.id,
+        username: user.username,
+        email: user.email,
+        phone: user.phone
+      }
+    });
+
+  } catch (error) {
+    console.error("Login Error:", error.message);
+    res.status(500).json({ error: "Server error" });
+  }
+});
 
 
 app.post('/export', async (req, res) => {
@@ -174,81 +287,81 @@ app.post("/register", async (req, res) => {
 
 
 // 🔵 LOGIN USER
-app.post("/login", async (req, res) => {
-  try {
-    const { email, phone, password } = req.body;
+// app.post("/login", async (req, res) => {
+//   try {
+//     const { email, phone, password } = req.body;
 
-    if ((!email && !phone) || !password) {
-      return res.status(400).json({ error: "Email or phone and password are required." });
-    }
+//     if ((!email && !phone) || !password) {
+//       return res.status(400).json({ error: "Email or phone and password are required." });
+//     }
 
-    let user;
+//     let user;
 
-    if (email) {
-      // Admin login check
-      const admin = await pool.query("SELECT * FROM admin_settings WHERE admin_email = $1", [email]);
-      if (admin.rows.length > 0) {
-        const isAdminMatch = await bcrypt.compare(password, admin.rows[0].password);
-        if (!isAdminMatch) {
-          return res.status(401).json({ error: "Invalid credentials" });
-        }
-        const token = jwt.sign({ email: admin.rows[0].admin_email, role: "admin" }, process.env.JWT_SECRET, { expiresIn: "1h" });
+//     if (email) {
+//       // Admin login check
+//       const admin = await pool.query("SELECT * FROM admin_settings WHERE admin_email = $1", [email]);
+//       if (admin.rows.length > 0) {
+//         const isAdminMatch = await bcrypt.compare(password, admin.rows[0].password);
+//         if (!isAdminMatch) {
+//           return res.status(401).json({ error: "Invalid credentials" });
+//         }
+//         const token = jwt.sign({ email: admin.rows[0].admin_email, role: "admin" }, process.env.JWT_SECRET, { expiresIn: "1h" });
 
-        return res.json({
-          message: "Admin login successful",
-          token,
-          user: { email: admin.rows[0].admin_email, role: "admin" }
-        });
-      }
+//         return res.json({
+//           message: "Admin login successful",
+//           token,
+//           user: { email: admin.rows[0].admin_email, role: "admin" }
+//         });
+//       }
 
-      // Regular user login by email
-      const query = await pool.query("SELECT * FROM users WHERE email = $1", [email]);
-      if (query.rows.length === 0) {
-        return res.status(401).json({ error: "User not found" });
-      }
-      user = query.rows[0];
+//       // Regular user login by email
+//       const query = await pool.query("SELECT * FROM users WHERE email = $1", [email]);
+//       if (query.rows.length === 0) {
+//         return res.status(401).json({ error: "User not found" });
+//       }
+//       user = query.rows[0];
 
-    } else {
-      // Regular user login by phone
-      const query = await pool.query("SELECT * FROM users WHERE phone = $1", [phone]);
-      if (query.rows.length === 0) {
-        return res.status(401).json({ error: "User not found" });
-      }
-      user = query.rows[0];
-    }
+//     } else {
+//       // Regular user login by phone
+//       const query = await pool.query("SELECT * FROM users WHERE phone = $1", [phone]);
+//       if (query.rows.length === 0) {
+//         return res.status(401).json({ error: "User not found" });
+//       }
+//       user = query.rows[0];
+//     }
 
-    // Password validation
-    const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) {
-      return res.status(401).json({ error: "Invalid credentials" });
-    }
+//     // Password validation
+//     const isMatch = await bcrypt.compare(password, user.password);
+//     if (!isMatch) {
+//       return res.status(401).json({ error: "Invalid credentials" });
+//     }
 
-    // Generate token
-    const token = jwt.sign(
-      { userId: user.id, email: user.email, phone: user.phone, username: user.username, role: "user" },
-      process.env.JWT_SECRET,
-      { expiresIn: "1h" }
-    );
+//     // Generate token
+//     const token = jwt.sign(
+//       { userId: user.id, email: user.email, phone: user.phone, username: user.username, role: "user" },
+//       process.env.JWT_SECRET,
+//       { expiresIn: "1h" }
+//     );
 
-    // ✅ Store the token in the users table (fixes your /expenses issue)
-    await pool.query("UPDATE users SET token = $1 WHERE id = $2", [token, user.id]);
+//     // ✅ Store the token in the users table (fixes your /expenses issue)
+//     await pool.query("UPDATE users SET token = $1 WHERE id = $2", [token, user.id]);
 
-    res.json({
-      message: "Login successful",
-      token,
-      user: {
-        id: user.id,
-        username: user.username,
-        email: user.email,
-        phone: user.phone
-      }
-    });
+//     res.json({
+//       message: "Login successful",
+//       token,
+//       user: {
+//         id: user.id,
+//         username: user.username,
+//         email: user.email,
+//         phone: user.phone
+//       }
+//     });
 
-  } catch (error) {
-    console.error("Login Error:", error.message);
-    res.status(500).json({ error: "Server error" });
-  }
-});
+//   } catch (error) {
+//     console.error("Login Error:", error.message);
+//     res.status(500).json({ error: "Server error" });
+//   }
+// });
 
 
 
@@ -666,32 +779,32 @@ app.get("/dashboard", authenticateToken, async (req, res) => {
   }
 });
 
-router.get("/admin-email", async (req, res) => {
-    try {
-        const result = await pool.query("SELECT admin_email FROM admin_settings LIMIT 1");
-        if (result.rows.length > 0) {
-            res.json({ adminEmail: result.rows[0].admin_email });
-        } else {
-            res.status(404).json({ message: "Admin email not found" });
-        }
-    } catch (error) {
-        console.error("Error fetching admin email:", error);
-        res.status(500).json({ message: "Internal server error" });
-    }
-});
+// router.get("/admin-email", async (req, res) => {
+//     try {
+//         const result = await pool.query("SELECT admin_email FROM admin_settings LIMIT 1");
+//         if (result.rows.length > 0) {
+//             res.json({ adminEmail: result.rows[0].admin_email });
+//         } else {
+//             res.status(404).json({ message: "Admin email not found" });
+//         }
+//     } catch (error) {
+//         console.error("Error fetching admin email:", error);
+//         res.status(500).json({ message: "Internal server error" });
+//     }
+// });
 
-module.exports = router;
+// module.exports = router;
 
-const saltRounds = 10;
-const plainPassword = "Admin056#"; // Change this to your preferred admin password
+// const saltRounds = 10;
+// const plainPassword = "Admin056#"; // Change this to your preferred admin password
 
-bcrypt.hash(plainPassword, saltRounds, (err, hash) => {
-  if (err) {
-    console.error("Error hashing password:", err);
-  } else {
-    console.log(`UPDATE admin_settings SET password = '${hash}' WHERE admin_email = 'expensaver.admin@gmail.com';`);
-  }
-});
+// bcrypt.hash(plainPassword, saltRounds, (err, hash) => {
+//   if (err) {
+//     console.error("Error hashing password:", err);
+//   } else {
+//     console.log(`UPDATE admin_settings SET password = '${hash}' WHERE admin_email = 'expensaver.admin@gmail.com';`);
+//   }
+// });
 
 
 app.get("/", (req, res) => {
