@@ -268,13 +268,33 @@ app.post("/register", async (req, res) => {
 
     const hashedPassword = await bcrypt.hash(password, 8);
 
-    const newUser = await pool.query(
-      "INSERT INTO users (username, email, phone, password) VALUES ($1, $2, $3, $4) RETURNING id, username, email, phone",
+    const newUserResult = await pool.query(
+      "INSERT INTO users (username, email, phone, password) VALUES ($1, $2, $3, $4) RETURNING *",
       [username, email || null, phone || null, hashedPassword]
     );
 
-    const token = generateToken(newUser.rows[0]);
-    res.status(201).json({ message: "Registration successful!", token, user: newUser.rows[0] });
+    const newUser = newUserResult.rows[0];
+
+    const accessToken = generateAccessToken(newUser);
+    const refreshToken = generateRefreshToken(newUser);
+
+    // Store access token in DB (optional)
+    await pool.query("UPDATE users SET token = $1 WHERE id = $2", [accessToken, newUser.id]);
+
+    // Store refresh token in memory or DB
+    refreshTokens.push(refreshToken);
+
+    res.status(201).json({
+      message: "Registration successful!",
+      token: accessToken,
+      refreshToken,
+      user: {
+        id: newUser.id,
+        username: newUser.username,
+        email: newUser.email,
+        phone: newUser.phone,
+      },
+    });
 
   } catch (error) {
     console.error("Register Error:", error.message);
@@ -283,6 +303,25 @@ app.post("/register", async (req, res) => {
 });
 
 
+app.get('/profile', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.userId; // Extracted from JWT by middleware
+
+    const userResult = await pool.query(
+      "SELECT id, username, email, phone FROM users WHERE id = $1",
+      [userId]
+    );
+
+    if (userResult.rows.length === 0) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    res.json({ user: userResult.rows[0] });
+  } catch (error) {
+    console.error("Profile fetch error:", error.message);
+    res.status(500).json({ error: "Server error" });
+  }
+});
 
 
 
