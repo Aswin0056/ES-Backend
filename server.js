@@ -194,10 +194,12 @@ app.post('/login', async (req, res) => {
     const refreshToken = generateRefreshToken(user);
 
     // Store access token in DB (optional, for token matching)
-    await pool.query("UPDATE users SET token = $1 WHERE id = $2", [accessToken, user.id]);
+// Store access token and refresh token in DB
+      await pool.query(
+        "UPDATE users SET token = $1, refresh_token = $2 WHERE id = $3",
+        [accessToken, refreshToken, user.id]
+      );
 
-    // Store refresh token in memory or DB
-    refreshTokens.push(refreshToken);
 
     res.json({
       message: "Login successful",
