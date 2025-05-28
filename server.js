@@ -141,14 +141,14 @@ app.post('/refresh', async (req, res) => {
       return res.status(403).json({ error: "Invalid refresh token" });
     }
 
-    // Generate new tokens
-    const newAccessToken = generateAccessToken(user);
-    const newRefreshToken = generateRefreshToken(user);
+      // Example (simplified)
+      const newAccessToken = generateAccessToken(user);
+      const newRefreshToken = generateRefreshToken(user);
 
-    await pool.query(
-      "UPDATE users SET token = $1, refresh_token = $2 WHERE id = $3",
-      [newAccessToken, newRefreshToken, userId]
-    );
+      await pool.query(
+        "UPDATE users SET token = $1, refresh_token = $2 WHERE id = $3",
+        [newAccessToken, newRefreshToken, user.id]
+      );
 
     res.json({
       token: newAccessToken,
