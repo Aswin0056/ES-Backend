@@ -73,17 +73,20 @@ const authenticateToken = async (req, res, next) => {
   try {
     const verified = jwt.verify(token, process.env.JWT_SECRET);
     req.user = verified;
+    console.log("🔐 Verified JWT:", verified);
 
-    // 🔒 Verify token matches stored token in DB (only for regular users)
     if (verified.userId) {
       const result = await pool.query("SELECT token FROM users WHERE id = $1", [verified.userId]);
+      const dbToken = result.rows[0]?.token;
 
-      if (result.rows.length === 0 || result.rows[0].token !== token) {
+      console.log("🗃️ DB token:", dbToken);
+      console.log("📨 Sent token:", token);
+
+      if (!dbToken || dbToken !== token) {
         return res.status(403).json({ error: "Token mismatch. Please log in again." });
       }
     }
 
-    console.log("✅ Authenticated User:", verified);
     next();
   } catch (error) {
     console.error("❌ Invalid Token:", error.message);
