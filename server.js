@@ -121,14 +121,23 @@ app.post('/refresh', async (req, res) => {
   if (!refreshToken) return res.status(401).json({ error: "Refresh token required" });
 
   try {
+    console.log("Incoming refresh token:", refreshToken);
+
     const decoded = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET);
     const userId = decoded.userId;
 
-    // Find user and verify refresh token matches
     const result = await pool.query("SELECT * FROM users WHERE id = $1", [userId]);
     const user = result.rows[0];
 
-    if (!user || user.refresh_token !== refreshToken) {
+    if (!user) {
+      console.log("User not found in DB for refresh token");
+      return res.status(403).json({ error: "Invalid refresh token" });
+    }
+
+    console.log("User refresh token from DB:", user.refresh_token);
+
+    if (user.refresh_token !== refreshToken) {
+      console.log("Refresh token mismatch");
       return res.status(403).json({ error: "Invalid refresh token" });
     }
 
@@ -136,7 +145,6 @@ app.post('/refresh', async (req, res) => {
     const newAccessToken = generateAccessToken(user);
     const newRefreshToken = generateRefreshToken(user);
 
-    // Save tokens
     await pool.query(
       "UPDATE users SET token = $1, refresh_token = $2 WHERE id = $3",
       [newAccessToken, newRefreshToken, userId]
@@ -152,7 +160,6 @@ app.post('/refresh', async (req, res) => {
     return res.status(403).json({ error: "Invalid or expired refresh token" });
   }
 });
-
 
 app.post('/login', async (req, res) => {
   try {
