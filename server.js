@@ -162,6 +162,9 @@ app.post('/refresh', async (req, res) => {
   }
 });
 
+
+
+
 app.post('/login', async (req, res) => {
   try {
     const { email, phone, password } = req.body;
@@ -221,29 +224,52 @@ app.post('/login', async (req, res) => {
 });
 
 
+
+
 app.post('/export', async (req, res) => {
   try {
     const {
-      fileFormat, includeHeaders, selectedSheets,
-      dateFormat, includeFormulas, passwordProtect, password
+      fileFormat,
+      includeHeaders,
+      selectedSheets,
+      dateFormat,
+      includeFormulas, // Not used unless you implement formulas
+      passwordProtect, // Optional enhancement
+      password
     } = req.body;
+
+    const email = req.user.email; // Make sure you set req.user from auth middleware
+
+    let expensesQuery;
+    let values;
+
+    if (selectedSheets.includes('All Expenses')) {
+      expensesQuery = 'SELECT title, amount, quantity, created_at, sheet FROM expenses WHERE user_email = $1 ORDER BY created_at DESC';
+      values = [email];
+    } else {
+      expensesQuery = 'SELECT title, amount, quantity, created_at, sheet FROM expenses WHERE user_email = $1 AND sheet = ANY($2::text[]) ORDER BY created_at DESC';
+      values = [email, selectedSheets];
+    }
+
+    const result = await pool.query(expensesQuery, values);
+    const expenses = result.rows;
 
     const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet('Export');
 
-    // Sample data for testing
+    // Add headers
     if (includeHeaders) {
-      worksheet.addRow(['Name', 'Amount', 'Date']);
+      worksheet.addRow(['Title', 'Amount', 'Quantity', 'Date', 'Sheet']);
     }
 
-    worksheet.addRow(['Sample', 100, new Date().toISOString()]);
+    // Format and add rows
+    expenses.forEach(exp => {
+      const formattedDate = formatDate(exp.created_at, dateFormat);
+      worksheet.addRow([exp.title, exp.amount, exp.quantity, formattedDate, exp.sheet]);
+    });
 
-    res.setHeader(
-      'Content-Disposition',
-      `attachment; filename=export.${fileFormat}`
-    );
-    res.setHeader(
-      'Content-Type',
+    res.setHeader('Content-Disposition', `attachment; filename=export.${fileFormat}`);
+    res.setHeader('Content-Type',
       fileFormat === 'csv'
         ? 'text/csv'
         : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
@@ -254,11 +280,40 @@ app.post('/export', async (req, res) => {
     } else {
       await workbook.xlsx.write(res);
     }
+
   } catch (err) {
     console.error('Export error:', err);
     res.status(500).json({ message: 'Export failed' });
   }
 });
+
+// Helper for date formatting
+function formatDate(date, format) {
+  const d = new Date(date);
+  switch (format) {
+    case 'MM/DD/YYYY':
+      return `${pad(d.getMonth() + 1)}/${pad(d.getDate())}/${d.getFullYear()}`;
+    case 'DD-MM-YYYY':
+      return `${pad(d.getDate())}-${pad(d.getMonth() + 1)}-${d.getFullYear()}`;
+    case 'MMMM Do, YYYY': {
+      const months = [
+        'January', 'February', 'March', 'April', 'May', 'June',
+        'July', 'August', 'September', 'October', 'November', 'December'
+      ];
+      const suffix = (n) =>
+        n > 3 && n < 21 ? 'th' :
+        ['st', 'nd', 'rd'][n % 10 - 1] || 'th';
+      return `${months[d.getMonth()]} ${d.getDate()}${suffix(d.getDate())}, ${d.getFullYear()}`;
+    }
+    case 'YYYY-MM-DD':
+    default:
+      return d.toISOString().split('T')[0];
+  }
+}
+
+function pad(n) {
+  return n < 10 ? '0' + n : n;
+}
 
 
 
