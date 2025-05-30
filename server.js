@@ -321,7 +321,7 @@ app.post('/export', authenticateToken, async (req, res) => {
 
 
 
-let bannerText = " Today is a special day because it's National Brother's Day, International Women's Day for Peace and Disarmament, and World Schizophrenia Day 👬🌍 "; // Default banner text
+let bannerText = " Today is the 150th day of the year 📅, and it happens to be a Friday 🎉. "; // Default banner text
 
 // GET /banner-text - returns current banner text
 app.get('/banner-text', (req, res) => {
