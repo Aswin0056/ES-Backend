@@ -320,22 +320,27 @@ app.post('/export', authenticateToken, async (req, res) => {
 
 
 
-
-let bannerText = " Today is the 150th day of the year 📅, and it happens to be a Friday 🎉. "; // Default banner text
-
-// GET /banner-text - returns current banner text
-app.get('/banner-text', (req, res) => {
-  res.json({ text: bannerText });
+app.get('/banner-text', async (req, res) => {
+  try {
+    const result = await pool.query('SELECT text FROM banner ORDER BY updated_at DESC LIMIT 1');
+    res.json({ text: result.rows[0]?.text || '' });
+  } catch (err) {
+    res.status(500).json({ error: 'Database error' });
+  }
 });
 
-// POST /banner-text - update banner text (you can add auth here)
-app.post('/banner-text', (req, res) => {
+// POST update banner text
+app.post('/banner-text', async (req, res) => {
   const { text } = req.body;
   if (!text || typeof text !== 'string') {
     return res.status(400).json({ error: 'Invalid banner text' });
   }
-  bannerText = text;
-  res.json({ message: 'Banner text updated', text: bannerText });
+  try {
+    await pool.query('INSERT INTO banner (text) VALUES ($1)', [text]);
+    res.json({ message: 'Banner text updated', text });
+  } catch (err) {
+    res.status(500).json({ error: 'Database error' });
+  }
 });
 
 
