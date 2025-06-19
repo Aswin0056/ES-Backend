@@ -940,6 +940,28 @@ app.get("/dashboard", authenticateToken, async (req, res) => {
 //   }
 // });
 
+// Example: PUT /sheets/rename
+app.put("/sheets/rename", authenticateToken, async (req, res) => {
+  const { oldName, newName } = req.body;
+
+  if (!oldName || !newName) {
+    return res.status(400).json({ error: "Old and new sheet names are required" });
+  }
+
+  try {
+    const result = await pool.query(
+      "UPDATE expenses SET sheet = $1 WHERE sheet = $2 AND user_id = $3",
+      [newName, oldName, req.user.userId]
+    );
+
+    res.status(200).json({ message: "Sheet renamed successfully", updatedRows: result.rowCount });
+  } catch (error) {
+    console.error("Rename Sheet Error:", error.message);
+    res.status(500).json({ error: "Server error during rename" });
+  }
+});
+
+
 
 app.get("/", (req, res) => {
   res.send("Azh Studio Backend is alive! 🚀");
