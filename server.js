@@ -42,26 +42,6 @@ app.use(
 
 app.use(express.json());
 
-// // Token creation:
-// const generateToken = (user) => {
-//   return jwt.sign({ userId: user.id }, process.env.JWT_SECRET, { expiresIn: "1h" });
-// };
-
-// const generateToken = (user) => {
-//   return jwt.sign(
-//     { userId: user.id },
-//     process.env.JWT_SECRET,
-//     { expiresIn: "30d" }
-//   );
-// };
-
-
-// app.get("/api/verify-token", authenticateToken, (req, res) => {
-//   res.json({ success: true, userId: req.user.userId });
-// });
-
-
-
 
 // Authentication middleware:
 const authenticateToken = async (req, res, next) => {
@@ -104,65 +84,8 @@ const generateAccessToken = (user) => {
   return jwt.sign(
     { userId: user.id, email: user.email, phone: user.phone, username: user.username, role: "user" },
     process.env.JWT_SECRET,
-    { expiresIn: '1h' }
   );
 };
-
-// Generate Refresh Token (longer expiry)
-const generateRefreshToken = (user) => {
-  return jwt.sign(
-    { userId: user.id },
-    process.env.JWT_REFRESH_SECRET,  // Use separate secret for refresh tokens
-    { expiresIn: '7d' }
-  );
-};
-
-app.post('/refresh', async (req, res) => {
-  const { refreshToken } = req.body;
-  if (!refreshToken) return res.status(401).json({ error: "Refresh token required" });
-
-  try {
-    console.log("Incoming refresh token:", refreshToken);
-
-    const decoded = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET);
-    const userId = decoded.userId;
-
-    const result = await pool.query("SELECT * FROM users WHERE id = $1", [userId]);
-    const user = result.rows[0];
-
-    if (!user) {
-      console.log("User not found in DB for refresh token");
-      return res.status(403).json({ error: "Invalid refresh token" });
-    }
-
-    console.log("User refresh token from DB:", user.refresh_token);
-
-    if (user.refresh_token !== refreshToken) {
-      console.log("Refresh token mismatch");
-      return res.status(403).json({ error: "Invalid refresh token" });
-    }
-
-      // Example (simplified)
-      const newAccessToken = generateAccessToken(user);
-      const newRefreshToken = generateRefreshToken(user);
-
-      await pool.query(
-        "UPDATE users SET token = $1, refresh_token = $2 WHERE id = $3",
-        [newAccessToken, newRefreshToken, user.id]
-      );
-
-    res.json({
-      token: newAccessToken,
-      refreshToken: newRefreshToken,
-    });
-
-  } catch (err) {
-    console.error("Refresh error:", err.message);
-    return res.status(403).json({ error: "Invalid or expired refresh token" });
-  }
-});
-
-
 
 
 app.post('/login', async (req, res) => {
@@ -194,28 +117,25 @@ app.post('/login', async (req, res) => {
       return res.status(401).json({ error: "Invalid credentials" });
     }
 
-    const accessToken = generateAccessToken(user);
-    const refreshToken = generateRefreshToken(user);
+  const accessToken = generateAccessToken(user);
 
-    // Store access token in DB (optional, for token matching)
-// Store access token and refresh token in DB
-      await pool.query(
-        "UPDATE users SET token = $1, refresh_token = $2 WHERE id = $3",
-        [accessToken, refreshToken, user.id]
-      );
+  // Only store access token (not refresh token)
+  await pool.query(
+    "UPDATE users SET token = $1 WHERE id = $2",
+    [accessToken, user.id]
+  );
 
+  res.json({
+    message: "Login successful",
+    token: accessToken,
+    user: {
+      id: user.id,
+      username: user.username,
+      email: user.email,
+      phone: user.phone
+    }
+  });
 
-    res.json({
-      message: "Login successful",
-      token: accessToken,
-      refreshToken,
-      user: {
-        id: user.id,
-        username: user.username,
-        email: user.email,
-        phone: user.phone
-      }
-    });
 
   } catch (error) {
     console.error("Login Error:", error.message);
