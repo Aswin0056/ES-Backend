@@ -962,6 +962,8 @@ app.put("/sheets/rename", authenticateToken, async (req, res) => {
 });
 
 
+const esaiRouter = require("./routes/esai");
+app.use('/api/esai', esaiRouter);
 
 app.get("/", (req, res) => {
   res.send("Azh Studio Backend is alive! 🚀");
