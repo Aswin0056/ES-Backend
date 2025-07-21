@@ -980,6 +980,12 @@ app.get("/api/ping", (req, res) => {
   res.json({ message: "pong" });
 });
 
+app.get('/keep-alive', (req, res) => {
+  console.log("Keep-alive triggered at", new Date().toLocaleTimeString());
+  res.status(200).send("OK");
+});
+
+
 
 // ✅ Keep Server Warm (Prevent Cold Starts)
 setInterval(() => {
